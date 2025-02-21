@@ -1,0 +1,313 @@
+import React, { useState } from 'react';
+
+const ROCalculator = () => {
+  const [inputs, setInputs] = useState({
+    stages: 2,
+    elementsPerVessel: 6,
+    vesselsStage1: 4,
+    vesselsStage2: 2,
+    elementArea: 400,
+    temperature: 25,
+    feedPressure: 800,
+    permatePressure: 0,
+    feedFlow: 100,
+    foulingFactor: 0.85,
+    feedTDS: 35000,
+    saltRejection: 0.99
+  });
+
+  const [results, setResults] = useState({
+    elementResults: [],
+    systemResults: {
+      recovery: 0,
+      limitingRecovery: 0,
+      averageFlux: 0,
+      totalPermeateFlow: 0,
+      permeateConcentration: 0,
+      averageElementRecovery: 0,
+      concentratePolarization: 0,
+      concentrateOsmoticPressure: 0,
+      pressureDrops: [0, 0],
+      feedOsmoticPressure: 0
+    }
+  });
+
+  const calculateTCF = (T) => {
+    if (T >= 25) {
+      return Math.exp(2640 * (1/298 - 1/(273 + T)));
+    }
+    return Math.exp(3020 * (1/298 - 1/(273 + T)));
+  };
+
+  const calculateOsmoticPressure = (tds, T) => {
+    return 1.12 * (273 + T) * (tds / 58500);
+  };
+
+  const calculatePolarization = (recovery) => {
+    return Math.exp(0.7 * recovery);
+  };
+
+  const calculatePressureDrop = (flow, isStage) => {
+    const flowGPM = flow / 1440;
+    if (isStage) {
+      return 0.04 * Math.pow(flowGPM, 2);
+    }
+    return 0.01 * Math.pow(flowGPM, 1.7);
+  };
+
+  const calculatePermeability = (osmoticPressure) => {
+    if (osmoticPressure <= 25) return 0.125;
+    if (osmoticPressure <= 200) return 0.125 - 0.01 * (osmoticPressure - 25) / 35;
+    if (osmoticPressure <= 400) return 0.070 - 0.0001 * (osmoticPressure - 200);
+    return 0.05;
+  };
+
+  const calculateLimitingRecovery = (feedOsmoticPressure, polarization, saltRejection, feedPressure, pressureDrop, permatePressure) => {
+    return 1 - (feedOsmoticPressure * polarization * saltRejection) / 
+           (feedPressure - pressureDrop - permatePressure);
+  };
+
+  const calculateTotalPermeateFlow = (Ne, Se, Ap, TCF, FF, Pi, dPfc, Pp, pi, pip) => {
+    return Ne * Se * Ap * TCF * FF * (Pi - dPfc/2 - Pp - pi + pip);
+  };
+
+  const calculateAverageElementRecovery = (systemRecovery, numberOfElements) => {
+    return 1 - Math.pow(1 - systemRecovery, 1/numberOfElements);
+  };
+
+  const calculate = () => {
+    try {
+      const TCF = calculateTCF(inputs.temperature);
+      const feedOsmoticPressure = calculateOsmoticPressure(inputs.feedTDS, inputs.temperature);
+      
+      let elementResults = [];
+      let currentFlow = inputs.feedFlow * 1440;
+      let currentTDS = inputs.feedTDS;
+      let currentPressure = inputs.feedPressure;
+      let totalPermeate = 0;
+      let elementRecoveries = [];
+      let concentrateOsmoticPressures = [];
+      
+      for (let stage = 0; stage < inputs.stages; stage++) {
+        const vessels = stage === 0 ? inputs.vesselsStage1 : inputs.vesselsStage2;
+        let stagePermeate = 0;
+        
+        for (let vessel = 0; vessel < vessels; vessel++) {
+          let vesselFlow = currentFlow / vessels;
+          let vesselTDS = currentTDS;
+          let vesselPressure = currentPressure;
+          
+          for (let element = 0; element < inputs.elementsPerVessel; element++) {
+            const osmoticPressure = calculateOsmoticPressure(vesselTDS, inputs.temperature);
+            const permeability = calculatePermeability(osmoticPressure);
+            const polarization = calculatePolarization(stagePermeate / currentFlow);
+            
+            const netPressure = vesselPressure - inputs.permatePressure - 
+                               osmoticPressure * polarization;
+            
+            const permeateFlow = inputs.elementArea * permeability * TCF * 
+                                inputs.foulingFactor * netPressure;
+            
+            const recovery = permeateFlow / vesselFlow;
+            elementRecoveries.push(recovery);
+            
+            const concentrateFlow = vesselFlow - permeateFlow;
+            const concentrateTDS = concentrateFlow > 0 ? 
+              (vesselTDS * vesselFlow - permeateFlow * vesselTDS * (1 - inputs.saltRejection)) / concentrateFlow :
+              vesselTDS;
+            
+            const pressureDrop = calculatePressureDrop(vesselFlow, false);
+            
+            const concOsmoticPressure = calculateOsmoticPressure(concentrateTDS, inputs.temperature);
+            concentrateOsmoticPressures.push(concOsmoticPressure);
+            
+            elementResults.push({
+              stage: stage + 1,
+              vessel: vessel + 1,
+              element: element + 1,
+              feedFlow: vesselFlow,
+              permeateFlow,
+              concentrateFlow,
+              feedTDS: vesselTDS,
+              concentrateTDS,
+              recovery: recovery * 100,
+              polarization,
+              osmoticPressure: concOsmoticPressure
+            });
+            
+            vesselFlow = concentrateFlow;
+            vesselTDS = concentrateTDS;
+            vesselPressure -= pressureDrop;
+            stagePermeate += permeateFlow;
+          }
+        }
+        
+        const stagePressureDrop = calculatePressureDrop(currentFlow, true);
+        currentFlow -= stagePermeate;
+        
+        if (currentFlow > 0) {
+          currentTDS = (currentTDS * (currentFlow + stagePermeate) - 
+                      stagePermeate * currentTDS * (1 - inputs.saltRejection)) / currentFlow;
+        }
+        
+        currentPressure -= stagePressureDrop;
+        totalPermeate += stagePermeate;
+      }
+      
+      const systemRecovery = totalPermeate / (inputs.feedFlow * 1440);
+      const totalElements = inputs.elementsPerVessel * (inputs.vesselsStage1 + inputs.vesselsStage2);
+      const averageElementRecovery = calculateAverageElementRecovery(systemRecovery, totalElements);
+      const avgConcentrateOsmoticPressure = concentrateOsmoticPressures.reduce((a, b) => a + b, 0) / 
+                                          concentrateOsmoticPressures.length;
+      
+      const totalPermeateFlow = calculateTotalPermeateFlow(
+        totalElements,
+        inputs.elementArea,
+        calculatePermeability(avgConcentrateOsmoticPressure),
+        TCF,
+        inputs.foulingFactor,
+        inputs.feedPressure,
+        calculatePressureDrop(inputs.feedFlow * 1440, true),
+        inputs.permatePressure,
+        avgConcentrateOsmoticPressure,
+        avgConcentrateOsmoticPressure * (1 - inputs.saltRejection)
+      );
+      
+      const permeateConcentration = inputs.feedTDS * (1 - inputs.saltRejection) * 
+                                   calculatePolarization(systemRecovery);
+      
+      const systemPolarization = calculatePolarization(systemRecovery);
+      const averageFlux = totalPermeate / (inputs.elementArea * totalElements);
+      
+      setResults({
+        elementResults,
+        systemResults: {
+          recovery: systemRecovery * 100,
+          limitingRecovery: calculateLimitingRecovery(
+            feedOsmoticPressure,
+            systemPolarization,
+            inputs.saltRejection,
+            inputs.feedPressure,
+            calculatePressureDrop(inputs.feedFlow * 1440, true),
+            inputs.permatePressure
+          ) * 100,
+          averageFlux,
+          totalPermeateFlow,
+          permeateConcentration,
+          averageElementRecovery: averageElementRecovery * 100,
+          concentratePolarization: systemPolarization,
+          concentrateOsmoticPressure: avgConcentrateOsmoticPressure,
+          pressureDrops: [
+            calculatePressureDrop(inputs.feedFlow * 1440, true),
+            calculatePressureDrop(currentFlow, true)
+          ],
+          feedOsmoticPressure
+        }
+      });
+    } catch (error) {
+      console.error('Calculation error:', error);
+    }
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setInputs(prev => ({
+      ...prev,
+      [name]: parseFloat(value) || 0
+    }));
+  };
+
+  return (
+    <div className="w-full max-w-4xl mx-auto p-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-4">
+          <h3 className="font-semibold">Input Parameters</h3>
+          <div className="space-y-2">
+            {Object.entries(inputs).map(([key, value]) => (
+              <label key={key} className="block">
+                {key.replace(/([A-Z])/g, ' $1').toLowerCase()}:
+                <input
+                  type="number"
+                  name={key}
+                  value={value}
+                  onChange={handleInputChange}
+                  className="w-full mt-1 p-2 border rounded"
+                />
+              </label>
+            ))}
+          </div>
+          <button
+            onClick={calculate}
+            className="w-full bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600"
+          >
+            Calculate
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="font-semibold">System Results</h3>
+          <div className="space-y-2">
+            <div className="p-2 bg-gray-50 rounded">
+              <span className="font-medium">System Recovery:</span>
+              <span className="float-right">{results.systemResults.recovery.toFixed(1)}%</span>
+            </div>
+            <div className="p-2 bg-gray-50 rounded">
+              <span className="font-medium">Total Permeate Flow:</span>
+              <span className="float-right">{(results.systemResults.totalPermeateFlow/1440).toFixed(1)} gpm</span>
+            </div>
+            <div className="p-2 bg-gray-50 rounded">
+              <span className="font-medium">Permeate TDS:</span>
+              <span className="float-right">{results.systemResults.permeateConcentration.toFixed(0)} ppm</span>
+            </div>
+            <div className="p-2 bg-gray-50 rounded">
+              <span className="font-medium">Average Element Recovery:</span>
+              <span className="float-right">{results.systemResults.averageElementRecovery.toFixed(1)}%</span>
+            </div>
+            <div className="p-2 bg-gray-50 rounded">
+              <span className="font-medium">Average Flux:</span>
+              <span className="float-right">{results.systemResults.averageFlux.toFixed(1)} gfd</span>
+            </div>
+            <div className="p-2 bg-gray-50 rounded">
+              <span className="font-medium">Concentrate Osmotic Pressure:</span>
+              <span className="float-right">{results.systemResults.concentrateOsmoticPressure.toFixed(1)} psi</span>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <h4 className="font-semibold mb-2">Element Details</h4>
+            <div className="overflow-x-auto">
+              <table className="min-w-full">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="p-2 border">Stage</th>
+                    <th className="p-2 border">Vessel</th>
+                    <th className="p-2 border">Element</th>
+                    <th className="p-2 border">Feed Flow</th>
+                    <th className="p-2 border">Recovery (%)</th>
+                    <th className="p-2 border">CP Factor</th>
+                    <th className="p-2 border">Osmotic P</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {results.elementResults.map((el, idx) => (
+                    <tr key={idx}>
+                      <td className="p-2 border">{el.stage}</td>
+                      <td className="p-2 border">{el.vessel}</td>
+                      <td className="p-2 border">{el.element}</td>
+                      <td className="p-2 border">{(el.feedFlow/1440).toFixed(1)}</td>
+                      <td className="p-2 border">{el.recovery.toFixed(1)}</td>
+                      <td className="p-2 border">{el.polarization.toFixed(2)}</td>
+                      <td className="p-2 border">{el.osmoticPressure.toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ROCalculator;

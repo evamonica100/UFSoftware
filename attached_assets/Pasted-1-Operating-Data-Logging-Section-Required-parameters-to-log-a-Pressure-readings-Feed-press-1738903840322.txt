@@ -1,0 +1,73 @@
+1. Operating Data Logging Section:
+Required parameters to log:
+a) Pressure readings:
+   - Feed pressure (psi)
+   - Permeate pressure (psi)
+   - Concentrate pressure (psi)
+   - Pressure drop per stage
+   - Pressure drop per filter cartridge
+
+b) Flow measurements:
+   - Feed flow (gpm)
+   - Permeate flow (gpm)
+   - Concentrate flow (gpm)
+
+c) Water quality:
+   - Conductivity (Feed, Permeate, Concentrate)
+   - TDS calculations using K-factors:
+     * Permeate (0.1-1 mS/m): K = 0.50
+     * Permeate (30-80 mS/m): K = 0.55
+     * Seawater (4500-6000 mS/m): K = 0.70
+     * Concentrate (6500-8500 mS/m): K = 0.75
+   - pH values
+   - Temperature (°C)
+
+2. Performance Normalization Section:
+Implement these specific calculations:
+
+a) Normalized Permeate Flow:
+Qs = [(Pf - ΔP/2 - Pp - πfc) / (Pf - ΔP/2 - Pp - πfc)o] × [TCFs/TCFo] × Qo
+Where:
+- Pf = feed pressure
+- ΔP = pressure drop
+- Pp = permeate pressure
+- πfc = osmotic pressure
+- TCF = temperature correction factor
+- Q = flow rate
+- Subscript s = standard condition
+- Subscript o = operating condition
+
+b) Temperature Correction Factor:
+For T ≥ 25°C: TCF = EXP[2640 × (1/298 - 1/(273 + T))]
+For T ≤ 25°C: TCF = EXP[3020 × (1/298 - 1/(273 + T))]
+
+c) Osmotic Pressure:
+For Cfc < 20000 mg/L:
+πfc = [Cfc × (T + 320)] / 491000
+
+d) Feed-Concentrate:
+Cfc = Cf × [ln(1/(1-Y))/Y]
+Where:
+- Y = recovery ratio
+- Cf = feed TDS
+
+3. User Interface Requirements:
+a) Data Entry Form with:
+   - Input validation
+   - Unit conversions
+   - Date/time stamps
+   - Save/update functionality
+
+b) Results Display:
+   - Normalized performance values
+   - Comparison with baseline/start-up data
+   - Warning indicators for significant deviations
+
+4. Important Implementation Notes:
+- Start-up values should be preserved as reference points
+- Include error handling for invalid inputs
+- Implement real-time calculations
+- Show clear performance trends
+- Flag significant deviations from baseline
+
+Please implement proper error handling and validation throughout the application.

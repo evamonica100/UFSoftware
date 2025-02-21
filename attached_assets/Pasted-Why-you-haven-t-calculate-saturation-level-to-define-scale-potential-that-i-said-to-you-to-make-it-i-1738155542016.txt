@@ -1,0 +1,35 @@
+Why you haven't calculate saturation level to define scale potential that i said to you to make it in the tabular form?
+Scale Potential As Indicated By Saturation Level
+All but one of the indices discussed in this section describe the tendency of a water to form, or
+dissolve, a particular scale. These indices are derived from the concept of saturation. For
+example, saturation level for any of the scalants discussed is described as the ratio of a
+compounds observed ion activity product (IAP) to the ion activity product expected if the water
+were at equilibrium (Ksp). degree of supersaturation is
+labeled as this ratio (IAP/Ksp). This ratio has many names and is referred to as Saturation Level.
+
+If the saturation level is less than 1.0, a water is under saturated with respect to the scalant
+under study. The water will tend to dissolve, rather than form, scale of the type for which the
+index was calculated. As the saturation level decreases and approaches 0.0, the probability of
+forming this scale in a finite period of time also approaches 0.
+A water in contact with a solid form of the scale will tend to dissolve or precipitate the
+compound until an IAP/Ksp ratio of 1.0 is achieved. This will occur if the water is left
+undisturbed for an infinite period of time under the same conditions. A water with a saturation
+level of 1.0 is at equilibrium with the solid phase. It will not tend to dissolve, or precipitate the
+scale.
+As the saturation level (IAP/Ksp) increases above 1.0, the tendency to precipitate the
+compound increases. Most waters can carry a moderate level of supersaturation before
+precipitation occurs in a finite period of time - such as the seconds to minutes a water is present
+in a once through cooling system, or the hours to days a water is present in a cooling tower
+system. Most cooling systems can carry a small degree of supersaturation. The degree of
+supersaturation acceptable for a system varies with parameters such as residence time, the order
+of the scale reaction, and the amount of solid phase (scale)present in the system. To be on the
+safe side, it is recommended that an appropriate inhibitor be fed to a cooling system if the
+saturation level is above 1.0.
+Guidelines for acceptable values:
+Calcium carbonate: 1.2-1.5
+Calcium sulfate <1.0
+3.Silica: 1.1-1.2
+Calcium Fluoride: <1.0
+Iron carbonate: < 1.2
+Amorphous iron hydroxide: <1.0
+Iron phosphate: <1.0

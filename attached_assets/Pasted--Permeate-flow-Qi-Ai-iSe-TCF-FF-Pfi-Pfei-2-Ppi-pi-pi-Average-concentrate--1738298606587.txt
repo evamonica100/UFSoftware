@@ -1,0 +1,65 @@
+* Permeate flow: Qi = AiπiSe(TCF)(FF) [(Pfi - ΔPfei / 2 - Ppi - πpī + πpi)]
+* Average concentrate-side osmotic pressure: π̄ = πf̄ (Cfc / Cf) pf
+* Average permeate-side osmotic pressure: πpī = πfi (1 - Ri)
+* Ratio: arithmetic average concentrate-side to feed concentration for Element i: Cfc / Cf = 1 / 2 (1 + Cci / Cfi)
+* Ratio: concentrate to feed concentration for Element i: Cci / Cfi = (1 - Yi)(1 - Ri) / (1 - Yi)
+* Feedwater osmotic pressure: πf̄ = 1.12 (273 + T) ∑mj
+* Temperature correction factor for RO and NF membrane (T ≥ 25°C): TCF = EXP[2640 (1 / 298 - 1 / (273 + T))]
+* Temperature correction factor for RO and NF membrane (T ≤ 25°C): TCF = EXP[3020 (1 / 298 - 1 / (273 + T))]
+* Concentration polarization factor for 8-inch elements: pf̄ = EXP[0.7Yī]
+* System recovery: Y = 1 - [(1 - Y1)(1 - Y2)...(1 - Yn)] = 1 - ∏(1 - Yi)
+* Permeate concentration: Cp,j = BCfc,j pf̄ (TCF) (Se / Qi)
+* Total permeate flow: Q = NₑSₑĀπ (TCF)(FF) [(Pᵢ - ΔPfc / 2 - Pp - π + πp̄) / (π̄)]
+* Ratio: average concentrate-side to feed concentration for system: Cfc / Cf = [-R̄ ln(1 - Y / YL)] / [Y - (1 - YL) ln(1 - Y / YL)] + (1 - R̄)
+* Limiting system recovery: YL = 1 - [(πf̄)(pf̄)(R̄) / (Pf - ΔPfe - Pp)]
+* Approximate log-mean concentrate-side to feed concentration ratio for system: Cfc / Cf | YL,R=1 = ln(1 - Y) / Y
+* Average element recovery: Yi = 1 - (1 - Y)¹/ⁿ
+* Average polarization factor: pf̄ = EXP[0.7Ȳi]
+* Average concentrate-side osmotic pressure for system: π̄ = πf̄ (Cfc / Cf) pf̄
+* Average concentrate-side system pressure drop for 8-inch elements; 2 stages: ΔPfc = 0.04 ηfc²
+* ΔPfc alternative formula: ΔPfc = [0.1(Q / 1440) / YNV2] [(1 / NVR) + 1 - Y]
+* Individual 8-inch element, or single stage concentrate-side pressure drop: ΔPfc = 0.01 ηfc¹·⁷
+* Membrane permeability as a function of average concentrate-side osmotic pressure: Ā(π̄) = 0.125; π̄ ≤ 25 Ā(π̄) = 0.125 - 0.01 (π̄ - 25 / 35); 25 ≤ π̄ ≤ 200 Ā(π̄) = 0.070 - 0.0001(π̄ - 200); 200 ≤ π̄ ≤ 400
+* Permeate concentration: Cp = BCfc pf (TCF) (NₑSₑ / Q)
+Symbol definitions
+   1. Qi Permeate flow of Element i (gpd)
+   2. Σj Summation of all ionic species
+   3. Aiπi Membrane permeability at 25°C for Element i, a function of the average concentrate-side osmotic pressure (gfd/psi)
+   4. Y System recovery (expressed as a fraction) = permeate flow/feed flow
+   5. SE Membrane surface area per element (ft²)
+   6. ∏ni=1 Multiplication of n terms in a series
+   7. TCF Temperature correction factor for membrane permeability
+   8. n Number of elements in series
+   9. FF Membrane fouling factor
+   10. Q System permeate flow (gpd)
+   11. Pfi Feed pressure of Element i (psi)
+   12. NE Number of elements in system
+   13. ΔPfei Concentrate-side pressure drop for Element i (psi)
+   14. Qī Average element permeate flow (gpd) = Q/NE
+   15. Ppi Permeate pressure of Element i (psi)
+   16. Āπ Average membrane permeability at 25°C: a function of the average concentrate-side osmotic pressure (gfd/psi)
+   17. π̄ Average concentrate-side osmotic pressure (psi)
+   18. Cfc Average concentrate-side concentration for system (ppm)
+   19. πfi Feed osmotic pressure of Element i (psi)
+   20. R Average fractional salt rejection for system
+   21. πpi Permeate-side osmotic pressure of Element i (psi)
+   22. pf̄ Average concentrate polarization factor for system (psi)
+   23. ΔPfc Average concentrate-side system pressure drop (psi)
+   24. Ri Salt rejection fraction for Element i
+   25. YL Limiting (maximum) system recovery (expressed as a fraction)
+Feed Concentration Equations
+   1. Cfc / Cf Feed conc. - perm. conc. / Feed conc.
+   2. Cfc,i Average concentrate-side concentration for Element i (ppm)
+   3. Yī Average element recovery (expressed as a fraction)
+   4. Cfi Feed concentration for Element i (ppm)
+   5. pf̄ Average concentration polarization factor
+   6. Cci Concentrate concentration for Element i (ppm)
+   7. q̄fc Arithmetic average concentrate-side flowrate (gpm) = [1/2](feed flow + concentrate flow)
+   8. Yi Recovery fraction for Element i
+   9. Nv Number of six-element pressure vessels in system (= NE/6)
+   10. πf̄ Treated feedwater osmotic pressure (psi)
+   11. Nv1 Number of pressure vessels in first stage of 2-stage system (= 1/3 Nv)
+   12. T Feedwater temperature (°C)
+   13. Nv2 Number of pressure vessels in second stage of 2-stage system (= Nv/3)
+   14. mj Molar concentration of jth ion species
+   15. NVR Stage ratio (= Nv1/Nv2)
