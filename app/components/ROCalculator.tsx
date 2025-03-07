@@ -12,7 +12,6 @@ const ROCalculator = () => {
       [7, 7, 7],
     ], // Array of arrays containing elements per vessel
     temperature: 28,
-    feedPressure: 600,
     permatePressure: 14.7,
     feedFlow: 150,
     foulingFactor: 0.8,
@@ -53,6 +52,8 @@ const ROCalculator = () => {
       concentrateOsmoticPressure: 0,
       pressureDrops: [0, 0],
       feedOsmoticPressure: 0,
+      feedPressure: 0,
+      averageNDP: 0,
     },
   });
   
@@ -266,7 +267,6 @@ const ROCalculator = () => {
         [7, 7, 7],
       ], // Array of arrays containing elements per vessel
       temperature: 28,
-      feedPressure: 600,
       permatePressure: 14.7,
       feedFlow: 150,
       foulingFactor: 0.8,
@@ -293,6 +293,8 @@ const ROCalculator = () => {
         concentrateOsmoticPressure: 0,
         pressureDrops: [0, 0],
         feedOsmoticPressure: 0,
+        feedPressure: 0,
+        averageNDP: 0,
       },
     });
 
@@ -538,10 +540,8 @@ const ROCalculator = () => {
         feedPressure = initialFeedOsmoticPressure * 2.0 + 80;
       }
       
-      // Make sure we start with the user's specified pressure if it's provided
-      if (inputs.feedPressure > 0) {
-        feedPressure = inputs.feedPressure;
-      }
+      // Start with the estimated feed pressure from osmotic pressure calculation
+      // Rather than using a user-specified feed pressure input
       
       // Initial increment for binary search
       let pressureIncrement = feedPressure / 4;
@@ -964,6 +964,8 @@ const ROCalculator = () => {
             concentrateOsmoticPressure: parseFloat(bestResults.concentrateOsmoticPressure.toFixed(1)),
             pressureDrops: bestResults.pressureDrops.map((pd: number) => parseFloat(pd.toFixed(1))),
             feedOsmoticPressure: parseFloat(bestResults.feedOsmoticPressure.toFixed(1)),
+            feedPressure: parseFloat(bestFeedPressure.toFixed(1)),
+            averageNDP: parseFloat(bestResults.averageNDP.toFixed(1)),
           },
         });
       }
@@ -1167,7 +1169,6 @@ const ROCalculator = () => {
             {/* Other inputs */}
             {[
               "temperature",
-              "feedPressure",
               "permatePressure",
               "feedFlow",
               "foulingFactor",
@@ -1296,31 +1297,95 @@ const ROCalculator = () => {
         </div>
         <div className="bg-gray-50 p-6 rounded-lg">
           <h3 className="text-lg font-semibold text-blue-700 mb-4">
-            System Results
+            System Overview
           </h3>
           <div className="space-y-3">
-            {Object.entries(results.systemResults).map(
-              ([key, value]) =>
-                key !== "pressureDrops" &&
-                resultLabels[key] && (
-                  <div
-                    key={key}
-                    className="p-3 bg-white rounded-md flex justify-between items-center"
-                  >
-                    <span className="font-medium text-gray-700">
-                      {resultLabels[key].label}
-                    </span>
-                    <span className="text-gray-900">
-                      {typeof value === "number" ? value.toFixed(1) : value}
-                      {resultLabels[key].unit && (
-                        <span className="text-gray-500 ml-1">
-                          {resultLabels[key].unit}
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                ),
-            )}
+            {/* Fixed system parameters in the order specified */}
+            <div className="p-3 bg-white rounded-md flex justify-between items-center">
+              <span className="font-medium text-gray-700">Feed Flow</span>
+              <span className="text-gray-900">
+                {inputs.feedFlow.toFixed(1)} <span className="text-gray-500 ml-1">m³/h</span>
+              </span>
+            </div>
+            <div className="p-3 bg-white rounded-md flex justify-between items-center">
+              <span className="font-medium text-gray-700">Feed TDS</span>
+              <span className="text-gray-900">
+                {inputs.feedTDS.toFixed(0)} <span className="text-gray-500 ml-1">mg/L</span>
+              </span>
+            </div>
+            <div className="p-3 bg-white rounded-md flex justify-between items-center">
+              <span className="font-medium text-gray-700">Feed Pressure</span>
+              <span className="text-gray-900">
+                {results.systemResults.feedPressure || 0} <span className="text-gray-500 ml-1">psi</span>
+              </span>
+            </div>
+            <div className="p-3 bg-white rounded-md flex justify-between items-center">
+              <span className="font-medium text-gray-700">System Recovery</span>
+              <span className="text-gray-900">
+                {results.systemResults.recovery.toFixed(1)} <span className="text-gray-500 ml-1">%</span>
+              </span>
+            </div>
+            <div className="p-3 bg-white rounded-md flex justify-between items-center">
+              <span className="font-medium text-gray-700">Permeate Flow</span>
+              <span className="text-gray-900">
+                {results.systemResults.totalPermeateFlow.toFixed(1)} <span className="text-gray-500 ml-1">m³/h</span>
+              </span>
+            </div>
+            <div className="p-3 bg-white rounded-md flex justify-between items-center">
+              <span className="font-medium text-gray-700">Permeate TDS</span>
+              <span className="text-gray-900">
+                {results.systemResults.permeateConcentration.toFixed(1)} <span className="text-gray-500 ml-1">mg/L</span>
+              </span>
+            </div>
+            <div className="p-3 bg-white rounded-md flex justify-between items-center">
+              <span className="font-medium text-gray-700">Average Flux</span>
+              <span className="text-gray-900">
+                {results.systemResults.averageFlux.toFixed(1)} <span className="text-gray-500 ml-1">GFD</span>
+              </span>
+            </div>
+            <div className="p-3 bg-white rounded-md flex justify-between items-center">
+              <span className="font-medium text-gray-700">Average NDP</span>
+              <span className="text-gray-900">
+                {results.systemResults.averageNDP?.toFixed(1) || 0} <span className="text-gray-500 ml-1">psi</span>
+              </span>
+            </div>
+            
+            {/* Additional parameters that might be useful */}
+            <details className="bg-white rounded-md p-3">
+              <summary className="font-medium text-gray-700 cursor-pointer">Additional Parameters</summary>
+              <div className="mt-3 space-y-3 pl-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-700">Limiting Recovery</span>
+                  <span className="text-gray-900">
+                    {results.systemResults.limitingRecovery.toFixed(1)} <span className="text-gray-500 ml-1">%</span>
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-700">Average Element Recovery</span>
+                  <span className="text-gray-900">
+                    {results.systemResults.averageElementRecovery.toFixed(1)} <span className="text-gray-500 ml-1">%</span>
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-700">Concentration Polarization</span>
+                  <span className="text-gray-900">
+                    {results.systemResults.concentratePolarization.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-700">Concentrate Osmotic Pressure</span>
+                  <span className="text-gray-900">
+                    {results.systemResults.concentrateOsmoticPressure.toFixed(1)} <span className="text-gray-500 ml-1">psi</span>
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-700">Feed Osmotic Pressure</span>
+                  <span className="text-gray-900">
+                    {results.systemResults.feedOsmoticPressure.toFixed(1)} <span className="text-gray-500 ml-1">psi</span>
+                  </span>
+                </div>
+              </div>
+            </details>
           </div>
         </div>
       </div>
