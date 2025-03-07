@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { Line } from 'react-chartjs-2';
+import React, { useState, useEffect } from "react";
+import { Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -10,8 +10,8 @@ import {
   LineElement,
   Title,
   Tooltip,
-  Legend
-} from 'chart.js';
+  Legend,
+} from "chart.js";
 
 ChartJS.register(
   CategoryScale,
@@ -20,7 +20,7 @@ ChartJS.register(
   LineElement,
   Title,
   Tooltip,
-  Legend
+  Legend,
 );
 
 interface LogEntry {
@@ -57,7 +57,7 @@ interface TankSizing {
 
 const OperatingData = () => {
   const [currentEntry, setCurrentEntry] = useState<LogEntry>({
-    date: new Date().toISOString().split('T')[0],
+    date: new Date().toISOString().split("T")[0],
     feedFlow: 0,
     feedPressure: 0,
     permeatePressure: 0,
@@ -65,7 +65,7 @@ const OperatingData = () => {
     permeateFlow: 0,
     feedTemp: 0,
     feedConductivity: 0,
-    permeateConductivity: 0
+    permeateConductivity: 0,
   });
 
   const [logs, setLogs] = useState<Array<LogEntry & CalculatedResults>>([]);
@@ -76,47 +76,91 @@ const OperatingData = () => {
     vesselDiameter: 8,
     vesselLength: 20,
     pipeLength: 50,
-    pipeDiameter: 4
+    pipeDiameter: 4,
   });
 
   const [cleaningVolumes, setCleaningVolumes] = useState({
     vesselVolume: 0,
     pipeVolume: 0,
-    totalVolume: 0
+    totalVolume: 0,
   });
 
-  const calculateResults = (entry: LogEntry, firstEntry?: LogEntry): CalculatedResults => {
-    const startDate = firstEntry ? new Date(firstEntry.date) : new Date(entry.date);
-    const currentDate = new Date(entry.date);
-    const days = (currentDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
+  const calculateResults = (
+    entry: LogEntry,
+    firstEntry?: LogEntry,
+  ): CalculatedResults => {
+    // Reference values from first entry (baseline values)
+    const FdDsPsi = firstEntry ? firstEntry.feedPressure : entry.feedPressure;
+    const PrmDsFlw = firstEntry ? firstEntry.permeateFlow : entry.permeateFlow;
+    const ConDsFlw = firstEntry
+      ? firstEntry.feedFlow - firstEntry.permeateFlow
+      : entry.feedFlow - entry.permeateFlow;
 
+    // Days calculation (unchanged)
+    const startDate = firstEntry
+      ? new Date(firstEntry.date)
+      : new Date(entry.date);
+    const currentDate = new Date(entry.date);
+    const days =
+      (currentDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
+
+    // Basic calculations
     const dP = entry.feedPressure - entry.concentratePressure;
     const F = entry.permeateFlow / entry.feedFlow;
     const R = (1 - entry.permeateConductivity / entry.feedConductivity) * 100;
 
-    const TCF = Math.exp(2640 * ((1/298) - (1/(273 + entry.feedTemp))));
-    const NQp = entry.permeateFlow / TCF;
-    const NSP = entry.feedPressure / TCF;
-    const NSR = R / TCF;
-    const NdP = dP / TCF;
+    // Calculate concentrate flow
+    const concentrateFlow = entry.feedFlow - entry.permeateFlow;
+
+    // Osmotic pressure calculation - adapted from BASIC version
+    // Using conductivity values as proxy for concentration
+    const OsmPsi = (entry.feedConductivity - entry.permeateConductivity) * 0.01;
+
+    // Temperature correction factor - using 2500 constant from original BASIC code
+    // Temperature is already in Celsius in your React version
+    const TmpCrFct = Math.exp(2500 * (1 / (273 + entry.feedTemp) - 1 / 298));
+
+    // Normalized pressure drop calculation - adapted from BASIC version
+    // This accounts for flow rate changes
+    const NdP =
+      ((entry.permeateFlow + 2 * concentrateFlow) /
+        (PrmDsFlw + 2 * ConDsFlw)) **
+        2 *
+      dP;
+
+    // Normalized permeate flow - adapted from BASIC version with proper pressure normalization
+    let NQp = 0;
+    if (entry.feedPressure > 0 && entry.feedPressure - OsmPsi > 0) {
+      // This matches the more complex calculation from BASIC code
+      NQp =
+        ((entry.permeateFlow * TmpCrFct * FdDsPsi) /
+          (entry.feedPressure - OsmPsi)) *
+        (2 / (entry.feedPressure - entry.concentratePressure));
+    }
+
+    // Normalized system pressure
+    const NSP = entry.feedPressure / TmpCrFct;
+
+    // Normalized salt rejection - salt rejection is typically not temperature-corrected
+    const NSR = R;
 
     return { days, dP, F, R, NQp, NSP, NSR, NdP };
   };
 
   const handleInputChange = (field: keyof LogEntry, value: string) => {
-    setCurrentEntry(prev => ({
+    setCurrentEntry((prev) => ({
       ...prev,
-      [field]: field === 'date' ? value : Number(value)
+      [field]: field === "date" ? value : Number(value),
     }));
   };
 
   const handleAddEntry = () => {
     const firstEntry = logs[0];
     const results = calculateResults(currentEntry, firstEntry);
-    setLogs(prev => [...prev, { ...currentEntry, ...results }]);
+    setLogs((prev) => [...prev, { ...currentEntry, ...results }]);
     setCurrentEntry({
       ...currentEntry,
-      date: new Date().toISOString().split('T')[0]
+      date: new Date().toISOString().split("T")[0],
     });
   };
 
@@ -127,38 +171,43 @@ const OperatingData = () => {
     const pipeLengthInches = tankSizing.pipeLength * 12;
     const pipeRadius = tankSizing.pipeDiameter / 2;
 
-    const vesselVolume = Math.PI * Math.pow(vesselRadius, 2) * vesselLengthInches * 
-                        tankSizing.vesselCount * CONVERSION_FACTOR;
-    const pipeVolume = Math.PI * Math.pow(pipeRadius, 2) * pipeLengthInches * CONVERSION_FACTOR;
+    const vesselVolume =
+      Math.PI *
+      Math.pow(vesselRadius, 2) *
+      vesselLengthInches *
+      tankSizing.vesselCount *
+      CONVERSION_FACTOR;
+    const pipeVolume =
+      Math.PI * Math.pow(pipeRadius, 2) * pipeLengthInches * CONVERSION_FACTOR;
     const totalVolume = vesselVolume + pipeVolume;
 
     setCleaningVolumes({
       vesselVolume: Math.round(vesselVolume),
       pipeVolume: Math.round(pipeVolume),
-      totalVolume: Math.round(totalVolume)
+      totalVolume: Math.round(totalVolume),
     });
   };
 
   const getRecommendedFlowRate = (diameter: number) => {
     const flowRates = {
-      2.5: '3-5 gpm (0.7-1.2 m³/h)',
-      4: '8-10 gpm (1.8-2.3 m³/h)',
-      6: '16-20 gpm (3.6-4.5 m³/h)',
-      8: '30-45 gpm (6.0-10.2 m³/h)'
+      2.5: "3-5 gpm (0.7-1.2 m³/h)",
+      4: "8-10 gpm (1.8-2.3 m³/h)",
+      6: "16-20 gpm (3.6-4.5 m³/h)",
+      8: "30-45 gpm (6.0-10.2 m³/h)",
     };
-    return flowRates[diameter as keyof typeof flowRates] || 'N/A';
+    return flowRates[diameter as keyof typeof flowRates] || "N/A";
   };
 
   const handleTankSizingChange = (field: keyof TankSizing, value: string) => {
-    setTankSizing(prev => ({
+    setTankSizing((prev) => ({
       ...prev,
-      [field]: Number(value)
+      [field]: Number(value),
     }));
   };
 
   const showCleaningRequirements = () => {
     if (logs.length < 2) {
-      alert('Need at least two data points to calculate cleaning requirements');
+      alert("Need at least two data points to calculate cleaning requirements");
       return;
     }
 
@@ -166,24 +215,28 @@ const OperatingData = () => {
     const baseline = logs[0];
 
     const flowDecline = ((latest.NQp - baseline.NQp) / baseline.NQp) * 100;
-    const saltPassageIncrease = ((latest.NSR - baseline.NSR) / baseline.NSR) * 100;
-    const pressureDropIncrease = ((latest.NdP - baseline.NdP) / baseline.NdP) * 100;
+    const saltPassageIncrease =
+      ((latest.NSR - baseline.NSR) / baseline.NSR) * 100;
+    const pressureDropIncrease =
+      ((latest.NdP - baseline.NdP) / baseline.NdP) * 100;
 
     alert(
       `Cleaning Requirements Analysis:\n\n` +
-      `Flow Decline: ${flowDecline.toFixed(2)}% ${flowDecline <= -10 ? '(Cleaning Required)' : ''}\n` +
-      `Salt Passage Increase: ${saltPassageIncrease.toFixed(2)}% ${saltPassageIncrease >= 10 ? '(Cleaning Required)' : ''}\n` +
-      `Pressure Drop Increase: ${pressureDropIncrease.toFixed(2)}% ${pressureDropIncrease >= 15 ? '(Cleaning Required)' : ''}\n\n` +
-      `Cleaning is required when:\n` +
-      `• Normalized permeate flow drops 10%\n` +
-      `• Normalized salt passage increases 5-10%\n` +
-      `• Normalized pressure drop increases 10-15%`
+        `Flow Decline: ${flowDecline.toFixed(2)}% ${flowDecline <= -10 ? "(Cleaning Required)" : ""}\n` +
+        `Salt Passage Increase: ${saltPassageIncrease.toFixed(2)}% ${saltPassageIncrease >= 10 ? "(Cleaning Required)" : ""}\n` +
+        `Pressure Drop Increase: ${pressureDropIncrease.toFixed(2)}% ${pressureDropIncrease >= 15 ? "(Cleaning Required)" : ""}\n\n` +
+        `Cleaning is required when:\n` +
+        `• Normalized permeate flow drops 10%\n` +
+        `• Normalized salt passage increases 5-10%\n` +
+        `• Normalized pressure drop increases 10-15%`,
     );
   };
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-lg">
-      <h2 className="text-2xl font-bold text-blue-800 mb-6">RO Membrane Evaluation</h2>
+      <h2 className="text-2xl font-bold text-blue-800 mb-6">
+        RO Membrane Evaluation
+      </h2>
 
       {/* Input Table */}
       <div className="mb-4">
@@ -210,25 +263,30 @@ const OperatingData = () => {
                   <input
                     type="date"
                     value={currentEntry.date}
-                    onChange={(e) => handleInputChange('date', e.target.value)}
+                    onChange={(e) => handleInputChange("date", e.target.value)}
                     className="w-full"
                   />
                 </td>
-                {Object.keys(currentEntry).map(key => {
-                  if (key === 'date') return null;
+                {Object.keys(currentEntry).map((key) => {
+                  if (key === "date") return null;
                   return (
                     <td key={key} className="px-2 py-1 border">
                       <input
                         type="number"
                         value={currentEntry[key as keyof LogEntry]}
-                        onChange={(e) => handleInputChange(key as keyof LogEntry, e.target.value)}
+                        onChange={(e) =>
+                          handleInputChange(
+                            key as keyof LogEntry,
+                            e.target.value,
+                          )
+                        }
                         className="w-full"
                       />
                     </td>
                   );
                 })}
                 <td className="px-2 py-1 border">
-                  <button 
+                  <button
                     onClick={handleAddEntry}
                     className="bg-blue-600 text-white px-4 py-1 rounded hover:bg-blue-700"
                   >
@@ -250,13 +308,23 @@ const OperatingData = () => {
               <tr className="bg-gray-50">
                 <th className="px-4 py-2 border">Date</th>
                 <th className="px-4 py-2 border">Days</th>
-                <th className="px-4 py-2 border">Differential Pressure (bar)</th>
+                <th className="px-4 py-2 border">
+                  Differential Pressure (bar)
+                </th>
                 <th className="px-4 py-2 border">Flow Factor (%)</th>
                 <th className="px-4 py-2 border">Recovery (%)</th>
-                <th className="px-4 py-2 border">Normalized Permeate Flow (m³/h)</th>
-                <th className="px-4 py-2 border">Normalized System Pressure (bar)</th>
-                <th className="px-4 py-2 border">Normalized Salt Rejection (%)</th>
-                <th className="px-4 py-2 border">Normalized Differential Pressure (bar)</th>
+                <th className="px-4 py-2 border">
+                  Normalized Permeate Flow (m³/h)
+                </th>
+                <th className="px-4 py-2 border">
+                  Normalized System Pressure (bar)
+                </th>
+                <th className="px-4 py-2 border">
+                  Normalized Salt Rejection (%)
+                </th>
+                <th className="px-4 py-2 border">
+                  Normalized Differential Pressure (bar)
+                </th>
                 <th className="px-4 py-2 border">Action</th>
               </tr>
             </thead>
@@ -266,15 +334,19 @@ const OperatingData = () => {
                   <td className="px-4 py-2 border">{log.date}</td>
                   <td className="px-4 py-2 border">{log.days.toFixed(1)}</td>
                   <td className="px-4 py-2 border">{log.dP.toFixed(2)}</td>
-                  <td className="px-4 py-2 border">{(log.F * 100).toFixed(2)}</td>
+                  <td className="px-4 py-2 border">
+                    {(log.F * 100).toFixed(2)}
+                  </td>
                   <td className="px-4 py-2 border">{log.R.toFixed(2)}</td>
                   <td className="px-4 py-2 border">{log.NQp.toFixed(2)}</td>
                   <td className="px-4 py-2 border">{log.NSP.toFixed(2)}</td>
                   <td className="px-4 py-2 border">{log.NSR.toFixed(2)}</td>
                   <td className="px-4 py-2 border">{log.NdP.toFixed(2)}</td>
                   <td className="px-4 py-2 border">
-                    <button 
-                      onClick={() => setLogs(logs.filter((_, i) => i !== index))}
+                    <button
+                      onClick={() =>
+                        setLogs(logs.filter((_, i) => i !== index))
+                      }
                       className="bg-red-600 text-white px-4 py-1 rounded hover:bg-red-700"
                     >
                       Delete
@@ -290,31 +362,31 @@ const OperatingData = () => {
       {/* Performance Graphs */}
       <div className="mt-8 mb-8">
         <h3 className="text-lg font-semibold mb-4">Performance Trends</h3>
-        <Line 
+        <Line
           data={{
-            labels: logs.map(log => log.date),
+            labels: logs.map((log) => log.date),
             datasets: [
               {
-                label: 'Normalized Permeate Flow (m³/h)',
-                data: logs.map(log => log.NQp),
-                borderColor: 'rgb(75, 192, 192)',
+                label: "Normalized Permeate Flow (m³/h)",
+                data: logs.map((log) => log.NQp),
+                borderColor: "rgb(75, 192, 192)",
               },
               {
-                label: 'Normalized System Pressure (bar)',
-                data: logs.map(log => log.NSP),
-                borderColor: 'rgb(255, 99, 132)',
+                label: "Normalized System Pressure (bar)",
+                data: logs.map((log) => log.NSP),
+                borderColor: "rgb(255, 99, 132)",
               },
               {
-                label: 'Normalized Salt Rejection (%)',
-                data: logs.map(log => log.NSR),
-                borderColor: 'rgb(153, 102, 255)',
+                label: "Normalized Salt Rejection (%)",
+                data: logs.map((log) => log.NSR),
+                borderColor: "rgb(153, 102, 255)",
               },
               {
-                label: 'Normalized Differential Pressure (bar)',
-                data: logs.map(log => log.NdP),
-                borderColor: 'rgb(255, 159, 64)',
-              }
-            ]
+                label: "Normalized Differential Pressure (bar)",
+                data: logs.map((log) => log.NdP),
+                borderColor: "rgb(255, 159, 64)",
+              },
+            ],
           }}
           options={{
             responsive: true,
@@ -323,83 +395,120 @@ const OperatingData = () => {
                 display: true,
                 title: {
                   display: true,
-                  text: 'Date'
-                }
+                  text: "Date",
+                },
               },
               y: {
                 display: true,
                 title: {
                   display: true,
-                  text: 'Value'
-                }
-              }
-            }
+                  text: "Value",
+                },
+              },
+            },
           }}
         />
       </div>
 
       {/* Cleaning Requirements Display */}
       <div className="mb-8">
-        <h3 className="text-lg font-semibold mb-4">Cleaning Requirements Analysis</h3>
+        <h3 className="text-lg font-semibold mb-4">
+          Cleaning Requirements Analysis
+        </h3>
         {logs.length >= 2 && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className={`p-4 rounded-lg ${
-              ((logs[logs.length-1].NQp - logs[0].NQp) / logs[0].NQp * 100) <= -10 
-                ? 'bg-red-100' 
-                : 'bg-green-100'
-            }`}>
+            <div
+              className={`p-4 rounded-lg ${
+                ((logs[logs.length - 1].NQp - logs[0].NQp) / logs[0].NQp) *
+                  100 <=
+                -10
+                  ? "bg-red-100"
+                  : "bg-green-100"
+              }`}
+            >
               <h4 className="font-semibold">Normalized Flow Decline</h4>
               <p className="text-2xl font-bold">
-                {((logs[logs.length-1].NQp - logs[0].NQp) / logs[0].NQp * 100).toFixed(2)}%
+                {(
+                  ((logs[logs.length - 1].NQp - logs[0].NQp) / logs[0].NQp) *
+                  100
+                ).toFixed(2)}
+                %
               </p>
               <p className="text-sm mt-2">
-                {((logs[logs.length-1].NQp - logs[0].NQp) / logs[0].NQp * 100) <= -10 
-                  ? 'Cleaning Required' 
-                  : 'Within Normal Range'}
+                {((logs[logs.length - 1].NQp - logs[0].NQp) / logs[0].NQp) *
+                  100 <=
+                -10
+                  ? "Cleaning Required"
+                  : "Within Normal Range"}
               </p>
             </div>
 
-            <div className={`p-4 rounded-lg ${
-              ((logs[logs.length-1].NSR - logs[0].NSR) / logs[0].NSR * 100) >= 5 
-                ? 'bg-red-100' 
-                : 'bg-green-100'
-            }`}>
+            <div
+              className={`p-4 rounded-lg ${
+                ((logs[logs.length - 1].NSR - logs[0].NSR) / logs[0].NSR) *
+                  100 >=
+                5
+                  ? "bg-red-100"
+                  : "bg-green-100"
+              }`}
+            >
               <h4 className="font-semibold">Salt Passage Increase</h4>
               <p className="text-2xl font-bold">
-                {((logs[logs.length-1].NSR - logs[0].NSR) / logs[0].NSR * 100).toFixed(2)}%
+                {(
+                  ((logs[logs.length - 1].NSR - logs[0].NSR) / logs[0].NSR) *
+                  100
+                ).toFixed(2)}
+                %
               </p>
               <p className="text-sm mt-2">
-                {((logs[logs.length-1].NSR - logs[0].NSR) / logs[0].NSR * 100) >= 5 
-                  ? 'Cleaning Required' 
-                  : 'Within Normal Range'}
+                {((logs[logs.length - 1].NSR - logs[0].NSR) / logs[0].NSR) *
+                  100 >=
+                5
+                  ? "Cleaning Required"
+                  : "Within Normal Range"}
               </p>
             </div>
 
-            <div className={`p-4 rounded-lg ${
-              ((logs[logs.length-1].NdP - logs[0].NdP) / logs[0].NdP * 100) >= 15 
-                ? 'bg-red-100' 
-                : 'bg-green-100'
-            }`}>
+            <div
+              className={`p-4 rounded-lg ${
+                ((logs[logs.length - 1].NdP - logs[0].NdP) / logs[0].NdP) *
+                  100 >=
+                15
+                  ? "bg-red-100"
+                  : "bg-green-100"
+              }`}
+            >
               <h4 className="font-semibold">Pressure Drop Increase</h4>
               <p className="text-2xl font-bold">
-                {((logs[logs.length-1].NdP - logs[0].NdP) / logs[0].NdP * 100).toFixed(2)}%
+                {(
+                  ((logs[logs.length - 1].NdP - logs[0].NdP) / logs[0].NdP) *
+                  100
+                ).toFixed(2)}
+                %
               </p>
               <p className="text-sm mt-2">
-                {((logs[logs.length-1].NdP - logs[0].NdP) / logs[0].NdP * 100) >= 15 
-                  ? 'Cleaning Required' 
-                  : 'Within Normal Range'}
+                {((logs[logs.length - 1].NdP - logs[0].NdP) / logs[0].NdP) *
+                  100 >=
+                15
+                  ? "Cleaning Required"
+                  : "Within Normal Range"}
               </p>
             </div>
           </div>
         )}
         {logs.length < 2 && (
-          <p className="text-gray-600">At least two data points are needed to analyze cleaning requirements.</p>
+          <p className="text-gray-600">
+            At least two data points are needed to analyze cleaning
+            requirements.
+          </p>
         )}
       </div>
 
       {/* Cleaning Tank Sizing Calculator */}
       <div className="bg-gray-50 p-6 rounded-lg mb-8">
-        <h3 className="text-lg font-semibold mb-4">Cleaning Tank Sizing Calculator</h3>
+        <h3 className="text-lg font-semibold mb-4">
+          Cleaning Tank Sizing Calculator
+        </h3>
 
         {/* Vessel Specifications */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -410,7 +519,9 @@ const OperatingData = () => {
             <input
               type="number"
               value={tankSizing.vesselCount}
-              onChange={(e) => handleTankSizingChange('vesselCount', e.target.value)}
+              onChange={(e) =>
+                handleTankSizingChange("vesselCount", e.target.value)
+              }
               className="w-full p-2 border rounded"
             />
           </div>
@@ -421,7 +532,9 @@ const OperatingData = () => {
             <input
               type="number"
               value={tankSizing.elementsPerVessel}
-              onChange={(e) => handleTankSizingChange('elementsPerVessel', e.target.value)}
+              onChange={(e) =>
+                handleTankSizingChange("elementsPerVessel", e.target.value)
+              }
               className="w-full p-2 border rounded"
             />
           </div>
@@ -432,7 +545,9 @@ const OperatingData = () => {
             <input
               type="number"
               value={tankSizing.vesselDiameter}
-              onChange={(e) => handleTankSizingChange('vesselDiameter', e.target.value)}
+              onChange={(e) =>
+                handleTankSizingChange("vesselDiameter", e.target.value)
+              }
               className="w-full p-2 border rounded"
             />
           </div>
@@ -443,7 +558,9 @@ const OperatingData = () => {
             <input
               type="number"
               value={tankSizing.vesselLength}
-              onChange={(e) => handleTankSizingChange('vesselLength', e.target.value)}
+              onChange={(e) =>
+                handleTankSizingChange("vesselLength", e.target.value)
+              }
               className="w-full p-2 border rounded"
             />
           </div>
@@ -454,7 +571,9 @@ const OperatingData = () => {
             <input
               type="number"
               value={tankSizing.pipeLength}
-              onChange={(e) => handleTankSizingChange('pipeLength', e.target.value)}
+              onChange={(e) =>
+                handleTankSizingChange("pipeLength", e.target.value)
+              }
               className="w-full p-2 border rounded"
             />
           </div>
@@ -465,7 +584,9 @@ const OperatingData = () => {
             <input
               type="number"
               value={tankSizing.pipeDiameter}
-              onChange={(e) => handleTankSizingChange('pipeDiameter', e.target.value)}
+              onChange={(e) =>
+                handleTankSizingChange("pipeDiameter", e.target.value)
+              }
               className="w-full p-2 border rounded"
             />
           </div>
@@ -484,21 +605,29 @@ const OperatingData = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <p className="text-sm text-gray-600">Vessel Volume:</p>
-                <p className="text-lg font-semibold">{cleaningVolumes.vesselVolume} gallons</p>
+                <p className="text-lg font-semibold">
+                  {cleaningVolumes.vesselVolume} gallons
+                </p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Pipe Volume:</p>
-                <p className="text-lg font-semibold">{cleaningVolumes.pipeVolume} gallons</p>
+                <p className="text-lg font-semibold">
+                  {cleaningVolumes.pipeVolume} gallons
+                </p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Total Volume:</p>
-                <p className="text-lg font-semibold">{cleaningVolumes.totalVolume} gallons</p>
+                <p className="text-lg font-semibold">
+                  {cleaningVolumes.totalVolume} gallons
+                </p>
               </div>
             </div>
 
             <div className="mt-4">
               <h4 className="font-semibold mb-2">Recommended Flow Rate:</h4>
-              <p className="text-lg">{getRecommendedFlowRate(tankSizing.vesselDiameter)}</p>
+              <p className="text-lg">
+                {getRecommendedFlowRate(tankSizing.vesselDiameter)}
+              </p>
             </div>
           </div>
         )}
