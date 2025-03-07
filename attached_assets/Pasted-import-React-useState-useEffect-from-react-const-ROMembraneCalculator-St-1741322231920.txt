@@ -1,0 +1,760 @@
+import React, { useState, useEffect } from 'react';
+
+const ROMembraneCalculator = () => {
+  // State for input parameters
+  const [feedFlow, setFeedFlow] = useState(100);
+  const [recoveryTarget, setRecoveryTarget] = useState(75);
+  const [temperature, setTemperature] = useState(25);
+  const [stages, setStages] = useState(2);
+  const [pvPerStage, setPvPerStage] = useState([4, 2]);
+  const [elsPerPV, setElsPerPV] = useState(6);
+  const [recyclePercent, setRecyclePercent] = useState(0);
+  const [flowFactor, setFlowFactor] = useState(0.85);
+  const [feedTDS, setFeedTDS] = useState(2000);
+  const [elementType, setElementType] = useState('SW30XLE-440i');
+  const [iterationLimit, setIterationLimit] = useState(50);
+  const [convergenceTolerance, setConvergenceTolerance] = useState(0.001);
+  
+  // Calculation status and results
+  const [calculating, setCalculating] = useState(false);
+  const [elementResults, setElementResults] = useState([]);
+  const [systemResults, setSystemResults] = useState(null);
+  const [iterationCount, setIterationCount] = useState(0);
+  const [convergenceStatus, setConvergenceStatus] = useState('');
+
+  // Membrane properties (would normally come from a database)
+  const membraneProperties = {
+    // Original membranes
+    'SW30XLE-440i': {
+      area: 440, // ft²
+      waterPermeability: 0.125, // gfd/psi at 25°C
+      saltPermeability: 0.00005, // gfd
+      rejectionNominal: 0.997, // fraction
+      maxFlux: 22, // gfd
+      maxFeedFlowRate: 16, // gpm
+      maxPressureDrop: 15 // psi
+    },
+    'SW30HRLE-440i': {
+      area: 440,
+      waterPermeability: 0.11,
+      saltPermeability: 0.00002,
+      rejectionNominal: 0.9985,
+      maxFlux: 20,
+      maxFeedFlowRate: 16,
+      maxPressureDrop: 15
+    },
+    
+    // ZEKINDO Brackish Water (BW) membranes
+    'ZEKINDO BW-4040': {
+      area: 82, // ft²
+      waterPermeability: 0.13, // gfd/psi at 25°C (derived from specs)
+      saltPermeability: 0.00007, // gfd (estimated based on rejection)
+      rejectionNominal: 0.9965, // fraction (from specs)
+      maxFlux: 24, // gfd (estimated)
+      maxFeedFlowRate: 16, // gpm (standard for 4" element)
+      maxPressureDrop: 15 // psi (standard)
+    },
+    'ZEKINDO BW-365': {
+      area: 365, // ft²
+      waterPermeability: 0.128, // gfd/psi (derived from specs)
+      saltPermeability: 0.00007, // gfd
+      rejectionNominal: 0.9965, // fraction
+      maxFlux: 24, // gfd
+      maxFeedFlowRate: 16, // gpm
+      maxPressureDrop: 15 // psi
+    },
+    'ZEKINDO BW-400': {
+      area: 400, // ft²
+      waterPermeability: 0.129, // gfd/psi
+      saltPermeability: 0.00006, // gfd
+      rejectionNominal: 0.997, // fraction
+      maxFlux: 24, // gfd
+      maxFeedFlowRate: 16, // gpm
+      maxPressureDrop: 15 // psi
+    },
+    'ZEKINDO BW-400 FR': {
+      area: 400, // ft²
+      waterPermeability: 0.129, // gfd/psi
+      saltPermeability: 0.00006, // gfd
+      rejectionNominal: 0.997, // fraction
+      maxFlux: 24, // gfd
+      maxFeedFlowRate: 16, // gpm
+      maxPressureDrop: 15 // psi
+    },
+    
+    // ZEKINDO Sea Water (SW) membranes
+    'ZEKINDO SW-4040': {
+      area: 82, // ft²
+      waterPermeability: 0.0181, // gfd/psi at 25°C (derived from specs)
+      saltPermeability: 0.000045, // gfd (estimated based on rejection)
+      rejectionNominal: 0.996, // fraction (from specs)
+      maxFlux: 16, // gfd (typical for SW)
+      maxFeedFlowRate: 16, // gpm (standard for 4" element)
+      maxPressureDrop: 15 // psi (standard)
+    },
+    'ZEKINDO SW-400 HR': {
+      area: 400, // ft²
+      waterPermeability: 0.0215, // gfd/psi
+      saltPermeability: 0.000035, // gfd
+      rejectionNominal: 0.997, // fraction
+      maxFlux: 16, // gfd
+      maxFeedFlowRate: 16, // gpm
+      maxPressureDrop: 15 // psi
+    },
+    'ZEKINDO SW-440 HR': {
+      area: 440, // ft²
+      waterPermeability: 0.0212, // gfd/psi
+      saltPermeability: 0.000035, // gfd
+      rejectionNominal: 0.997, // fraction
+      maxFlux: 16, // gfd
+      maxFeedFlowRate: 16, // gpm
+      maxPressureDrop: 15 // psi
+    },
+    'ZEKINDO SW-4040 HRLE': {
+      area: 82, // ft²
+      waterPermeability: 0.0222, // gfd/psi
+      saltPermeability: 0.000045, // gfd
+      rejectionNominal: 0.996, // fraction
+      maxFlux: 16, // gfd
+      maxFeedFlowRate: 16, // gpm
+      maxPressureDrop: 15 // psi
+    },
+    'ZEKINDO SW-400 HRLE': {
+      area: 400, // ft²
+      waterPermeability: 0.0234, // gfd/psi
+      saltPermeability: 0.000035, // gfd
+      rejectionNominal: 0.997, // fraction
+      maxFlux: 16, // gfd
+      maxFeedFlowRate: 16, // gpm
+      maxPressureDrop: 15 // psi
+    },
+    'ZEKINDO SW-440 HRLE': {
+      area: 440, // ft²
+      waterPermeability: 0.0232, // gfd/psi
+      saltPermeability: 0.000035, // gfd
+      rejectionNominal: 0.997, // fraction
+      maxFlux: 16, // gfd
+      maxFeedFlowRate: 16, // gpm
+      maxPressureDrop: 15 // psi
+    }
+  };
+
+  // Constants and conversion factors
+  const GPD_TO_M3H = 0.00015771; // Gallons per day to cubic meters per hour
+  const M3H_TO_GPM = 4.4029; // Cubic meters per hour to gallons per minute
+  const M3H_TO_GPD = 6340.13; // Cubic meters per hour to gallons per day
+  const FT2_TO_M2 = 0.092903; // Square feet to square meters
+  const GPD_FT2_TO_LMH = 1.6996; // Gallons per day per square foot to liters per square meter per hour
+
+  // Calculate temperature correction factor
+  const calculateTCF = (temp) => {
+    if (temp >= 25) {
+      return Math.exp(2640 * (1/298 - 1/(273 + temp)));
+    } else {
+      return Math.exp(3020 * (1/298 - 1/(273 + temp)));
+    }
+  };
+
+  // Calculate feedwater osmotic pressure
+  const calculateOsmoticPressure = (tds, temp) => {
+    // Simplified calculation based on TDS
+    // πf̄ = 1.12 (273 + T) ∑mj
+    // Approximate ∑mj from TDS
+    const sumMj = tds / 58000; // Approximate conversion from TDS to molar concentration
+    return 1.12 * (273 + temp) * sumMj;
+  };
+
+  // Helper function to calculate concentration polarization factor
+  const calculatePolarizationFactor = (recovery) => {
+    return Math.exp(0.7 * recovery);
+  };
+
+  // Calculate pressure drop in element based on flow rate
+  const calculateElementPressureDrop = (flowRate) => {
+    // Convert m³/h to gpm for calculation
+    const flowGpm = flowRate * M3H_TO_GPM;
+    // ΔPfc = 0.01 ηfc¹·⁷
+    return 0.01 * Math.pow(flowGpm, 1.7);
+  };
+
+  // Calculate permeate flux based on net driving pressure
+  const calculateFlux = (ndp, waterPermeability, tcf, ff) => {
+    // Flux = A * (NDP) * TCF * FF
+    // A is the water permeability, NDP is net driving pressure, TCF is temp correction factor, FF is fouling factor
+    // If NDP is non-positive, return 0 flux
+    if (ndp <= 0) return 0;
+    return waterPermeability * ndp * tcf * ff;
+  };
+
+  // Calculate permeate TDS based on feed TDS, rejection, and flux
+  const calculatePermeateTDS = (feedTDS, elementRejection, flux, saltPermeability, tcf) => {
+    // Simple salt passage model
+    // Cp = B * Cf * TCF / flux
+    // Where B is salt permeability, Cf is feed concentration
+    const effectiveSaltPermeability = saltPermeability * tcf;
+    // Salt passage increases at lower flux (modified model)
+    const effectiveRejection = Math.max(0, elementRejection * (1 - 0.05 * Math.exp(-flux/5)));
+    return feedTDS * (1 - effectiveRejection);
+  };
+
+  // Run calculations with iterative solver
+  const runCalculations = () => {
+    setCalculating(true);
+    setConvergenceStatus('Calculating...');
+    
+    // Get membrane properties
+    const selectedMembrane = membraneProperties[elementType];
+    const tcf = calculateTCF(temperature);
+    const initialFeedOsmoticPressure = calculateOsmoticPressure(feedTDS, temperature);
+    const foulingFactor = flowFactor;
+    
+    // Calculate total elements in system
+    let totalElements = 0;
+    for (let i = 0; i < stages; i++) {
+      totalElements += pvPerStage[i] * elsPerPV;
+    }
+    
+    // Target recovery as fraction
+    const targetRecovery = recoveryTarget / 100;
+    
+    // Initial feed pressure guess - adjust based on membrane type and feed TDS
+    let feedPressure;
+    if (elementType.includes('SW')) {
+      // Seawater membranes need higher pressure
+      feedPressure = initialFeedOsmoticPressure * 2.2 + 300;
+    } else {
+      // Brackish water membranes
+      feedPressure = initialFeedOsmoticPressure * 2.0 + 80;
+    }
+    
+    // Initial increment for binary search - make smaller for more precision
+    let pressureIncrement = feedPressure / 4;
+    
+    // Binary search algorithm to find the right feed pressure
+    // that achieves the target recovery
+    let iterations = 0;
+    let converged = false;
+    let lastRecovery = 0;
+    let bestFeedPressure = feedPressure;
+    let bestResults = null;
+    let bestElementResults = [];
+    let bestDifference = 1.0; // Initialize to 100% difference
+    
+    // Ensure we run at least 5 iterations to refine the pressure
+    const minIterations = 5;
+    
+    while ((iterations < iterationLimit && !converged) || iterations < minIterations) {
+      iterations++;
+      
+      // Force more iterations even if we think we've converged
+      if (iterations <= minIterations) {
+        converged = false;
+      }
+      
+      // Create array of element objects
+      const elements = [];
+      for (let stage = 0; stage < stages; stage++) {
+        for (let pv = 0; pv < pvPerStage[stage]; pv++) {
+          for (let el = 0; el < elsPerPV; el++) {
+            elements.push({
+              stage: stage + 1,
+              pvNumber: pv + 1,
+              elementNumber: el + 1,
+              feedFlow: 0,
+              feedPressure: 0,
+              feedTDS: 0,
+              permeateFlow: 0,
+              permeateTDS: 0,
+              concentrateFlow: 0,
+              flux: 0,
+              recovery: 0,
+              ndp: 0
+            });
+          }
+        }
+      }
+
+      // Initial flow distribution to elements
+      // Calculate initial feed flow to each PV in first stage
+      const totalPVsFirstStage = pvPerStage[0];
+      const feedFlowPerPVGpm = (feedFlow * M3H_TO_GPM) / totalPVsFirstStage;
+      
+      // Initialize stage feed values
+      let currentStageFlow = feedFlow;
+      let currentStageTDS = feedTDS;
+      let currentStagePressure = feedPressure;
+      let totalPermeateFlow = 0;
+      let weightedPermeateTDS = 0;
+      
+      // Process elements stage by stage
+      for (let stage = 0; stage < stages; stage++) {
+        // Calculate feed per PV in this stage
+        const pvCount = pvPerStage[stage];
+        const feedFlowPerPV = currentStageFlow / pvCount;
+        
+        // Track total permeate flow from this stage
+        let stagePermeateFlow = 0;
+        
+        // Process each PV in this stage
+        for (let pv = 0; pv < pvCount; pv++) {
+          // Initialize values for this PV
+          let currentPVFeedFlow = feedFlowPerPV;
+          let currentPVFeedTDS = currentStageTDS;
+          let currentPVFeedPressure = currentStagePressure;
+          
+          // Process each element in this PV
+          for (let el = 0; el < elsPerPV; el++) {
+            // Get element index in the flat array
+            const elementIndex = elements.findIndex(e => 
+              e.stage === stage + 1 && 
+              e.pvNumber === pv + 1 && 
+              e.elementNumber === el + 1
+            );
+            
+            if (elementIndex === -1) continue; // Skip if element not found
+            
+            // Set feed conditions
+            elements[elementIndex].feedFlow = currentPVFeedFlow;
+            elements[elementIndex].feedPressure = currentPVFeedPressure;
+            elements[elementIndex].feedTDS = currentPVFeedTDS;
+            
+            // Calculate osmotic pressure
+            const feedOsmoticPressure = calculateOsmoticPressure(currentPVFeedTDS, temperature);
+            
+            // Calculate initial recovery guess for this element
+            // In more accurate models, this would be based on position, hydraulics, etc.
+            // For now, use a simple model based on remaining elements
+            const averageElementRecovery = 1 - Math.pow(1 - targetRecovery, 1/totalElements);
+            
+            // Calculate net driving pressure
+            const polarizationFactor = calculatePolarizationFactor(averageElementRecovery);
+            const effectiveOsmoticPressure = feedOsmoticPressure * polarizationFactor;
+            const ndp = Math.max(0, currentPVFeedPressure - effectiveOsmoticPressure);
+            elements[elementIndex].ndp = ndp;
+            
+            // Calculate flux based on NDP and membrane properties
+            const flux = calculateFlux(ndp, selectedMembrane.waterPermeability, tcf, foulingFactor);
+            elements[elementIndex].flux = flux;
+            
+            // Calculate permeate flow based on flux and membrane area
+            const permeateFlowGpd = flux * selectedMembrane.area;
+            const permeateFlowM3h = permeateFlowGpd * GPD_TO_M3H;
+            elements[elementIndex].permeateFlow = permeateFlowM3h;
+            
+            // Calculate recovery for this element
+            const elementRecovery = Math.min(0.3, permeateFlowM3h / currentPVFeedFlow); // Cap at 30% per element
+            elements[elementIndex].recovery = elementRecovery;
+            
+            // Calculate concentrate flow
+            const concentrateFlowM3h = currentPVFeedFlow - permeateFlowM3h;
+            elements[elementIndex].concentrateFlow = concentrateFlowM3h;
+            
+            // Calculate concentrate TDS
+            const concentrateTDS = currentPVFeedTDS / (1 - elementRecovery);
+            
+            // Calculate permeate TDS
+            const permeateTDS = calculatePermeateTDS(
+              currentPVFeedTDS, 
+              selectedMembrane.rejectionNominal, 
+              flux, 
+              selectedMembrane.saltPermeability,
+              tcf
+            );
+            elements[elementIndex].permeateTDS = permeateTDS;
+            
+            // Add to total permeate tracking
+            totalPermeateFlow += permeateFlowM3h;
+            weightedPermeateTDS += permeateFlowM3h * permeateTDS;
+            stagePermeateFlow += permeateFlowM3h;
+            
+            // Calculate pressure drop
+            const pressureDrop = calculateElementPressureDrop(currentPVFeedFlow);
+            
+            // Update feed values for next element
+            currentPVFeedFlow = concentrateFlowM3h;
+            currentPVFeedTDS = concentrateTDS;
+            currentPVFeedPressure = Math.max(0, currentPVFeedPressure - pressureDrop);
+          }
+        }
+        
+        // Calculate stage average values for next stage
+        if (stage < stages - 1) {
+          const stageConcFlow = currentStageFlow - stagePermeateFlow;
+          const stageConcTDS = currentStageTDS * currentStageFlow / (currentStageFlow - stagePermeateFlow);
+          
+          // Set values for next stage
+          currentStageFlow = stageConcFlow;
+          currentStageTDS = stageConcTDS;
+          // Assume a small interstage pressure drop
+          currentStagePressure = Math.max(0, currentStagePressure - 5);
+        }
+      }
+      
+      // Calculate system recovery
+      const actualRecovery = totalPermeateFlow / feedFlow;
+      const recoveryDifference = Math.abs(actualRecovery - targetRecovery);
+      
+      // Check if this is better than previous iterations
+      if (recoveryDifference < bestDifference) {
+        bestDifference = recoveryDifference;
+        bestFeedPressure = feedPressure;
+        bestResults = {
+          feedFlow,
+          feedTDS,
+          feedPressure,
+          permeateFlow: totalPermeateFlow,
+          permeateTDS: weightedPermeateTDS / totalPermeateFlow,
+          recovery: actualRecovery * 100,
+          // Calculate average flux
+          averageFlux: (totalPermeateFlow * M3H_TO_GPD) / (totalElements * selectedMembrane.area) * GPD_FT2_TO_LMH,
+          // Simplification of average NDP
+          averageNDP: feedPressure - initialFeedOsmoticPressure * calculatePolarizationFactor(actualRecovery / 2)
+        };
+        bestElementResults = [...elements];
+      }
+      
+      // Check for convergence - convert tolerance to absolute percentage points
+      const toleranceInPercentagePoints = convergenceTolerance;
+      if (recoveryDifference * 100 < toleranceInPercentagePoints && iterations >= minIterations) {
+        converged = true;
+        setConvergenceStatus(`Converged in ${iterations} iterations (difference: ${(recoveryDifference*100).toFixed(2)}%)`);
+      } else {
+        // Binary search adjustment
+        if (actualRecovery < targetRecovery) {
+          // Need to increase pressure
+          feedPressure += pressureIncrement;
+        } else {
+          // Need to decrease pressure
+          feedPressure -= pressureIncrement;
+        }
+        
+        // Reduce the increment for next iteration, but not too quickly
+        pressureIncrement /= 1.2;
+        
+        // Ensure pressure increment doesn't get too small too quickly
+        if (iterations < 10) {
+          pressureIncrement = Math.max(pressureIncrement, 5); // Keep at least 5 psi steps early on
+        }
+        
+        // Sanity check on pressure
+        feedPressure = Math.max(initialFeedOsmoticPressure * 1.1, feedPressure);
+        feedPressure = Math.min(1500, feedPressure); // Cap at 1500 psi
+        
+        setConvergenceStatus(`Iteration ${iterations}: Recovery=${(actualRecovery*100).toFixed(2)}% vs Target=${recoveryTarget}%, Pressure=${feedPressure.toFixed(1)} psi`);
+      }
+      
+      // Safety valve
+      if (iterations >= iterationLimit && !converged) {
+        setConvergenceStatus(`Did not converge after ${iterations} iterations. Best difference: ${(bestDifference*100).toFixed(2)}%`);
+      }
+      
+      // Format for display in UI
+      lastRecovery = actualRecovery;
+    }
+    
+    setIterationCount(iterations);
+    
+    // Format results for display
+    if (bestResults) {
+      setSystemResults({
+        feedFlow: feedFlow.toFixed(1),
+        feedTDS: feedTDS.toFixed(0),
+        feedPressure: bestFeedPressure.toFixed(1),
+        permeateFlow: bestResults.permeateFlow.toFixed(1),
+        permeateTDS: bestResults.permeateTDS.toFixed(1),
+        recovery: bestResults.recovery.toFixed(1),
+        averageFlux: bestResults.averageFlux.toFixed(2),
+        averageNDP: bestResults.averageNDP.toFixed(1)
+      });
+      
+      const formattedElementResults = bestElementResults.map(el => ({
+        stage: el.stage,
+        pvNumber: el.pvNumber,
+        element: el.elementNumber,
+        feedFlow: el.feedFlow.toFixed(1),
+        feedPressure: el.feedPressure.toFixed(1),
+        feedTDS: el.feedTDS.toFixed(0),
+        recovery: (el.recovery * 100).toFixed(1),
+        permeateFlow: el.permeateFlow.toFixed(2),
+        permeateTDS: el.permeateTDS.toFixed(1),
+        concentrateFlow: el.concentrateFlow.toFixed(1),
+        flux: el.flux.toFixed(1),
+        ndp: el.ndp.toFixed(1)
+      }));
+      
+      setElementResults(formattedElementResults);
+    }
+    
+    setCalculating(false);
+  };
+
+  // Update PV per stage when stages change
+  useEffect(() => {
+    let newPvPerStage = [...pvPerStage];
+    if (stages > newPvPerStage.length) {
+      // Add missing stages
+      while (newPvPerStage.length < stages) {
+        newPvPerStage.push(Math.max(1, Math.floor(newPvPerStage[newPvPerStage.length - 1] / 2)));
+      }
+    } else if (stages < newPvPerStage.length) {
+      // Remove extra stages
+      newPvPerStage = newPvPerStage.slice(0, stages);
+    }
+    setPvPerStage(newPvPerStage);
+  }, [stages]);
+
+  return (
+    <div className="p-4 max-w-6xl mx-auto">
+      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+        <h2 className="text-xl font-bold mb-4">RO Membrane Calculator (Recovery-Based Method)</h2>
+        
+        <div className="mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Feed Flow (m³/h)</label>
+              <input 
+                type="number" 
+                className="w-full p-2 border rounded" 
+                value={feedFlow} 
+                onChange={(e) => setFeedFlow(parseFloat(e.target.value))} 
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Target Recovery (%)</label>
+              <input 
+                type="number" 
+                className="w-full p-2 border rounded" 
+                value={recoveryTarget} 
+                onChange={(e) => setRecoveryTarget(parseFloat(e.target.value))} 
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Temperature (°C)</label>
+              <input 
+                type="number" 
+                className="w-full p-2 border rounded" 
+                value={temperature} 
+                onChange={(e) => setTemperature(parseFloat(e.target.value))} 
+              />
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Number of Stages</label>
+              <select 
+                className="w-full p-2 border rounded" 
+                value={stages} 
+                onChange={(e) => setStages(parseInt(e.target.value))}
+              >
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Elements per Pressure Vessel</label>
+              <select 
+                className="w-full p-2 border rounded" 
+                value={elsPerPV} 
+                onChange={(e) => setElsPerPV(parseInt(e.target.value))}
+              >
+                <option value="6">6</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Membrane Element Type</label>
+              <select 
+                className="w-full p-2 border rounded" 
+                value={elementType} 
+                onChange={(e) => setElementType(e.target.value)}
+              >
+                <optgroup label="Brackish Water (BW) Membranes">
+                  <option value="ZEKINDO BW-4040">ZEKINDO BW-4040</option>
+                  <option value="ZEKINDO BW-365">ZEKINDO BW-365</option>
+                  <option value="ZEKINDO BW-400">ZEKINDO BW-400</option>
+                  <option value="ZEKINDO BW-400 FR">ZEKINDO BW-400 FR (Fouling Resistant)</option>
+                </optgroup>
+                <optgroup label="Sea Water (SW) Membranes">
+                  <option value="ZEKINDO SW-4040">ZEKINDO SW-4040</option>
+                  <option value="ZEKINDO SW-400 HR">ZEKINDO SW-400 HR</option>
+                  <option value="ZEKINDO SW-440 HR">ZEKINDO SW-440 HR</option>
+                  <option value="ZEKINDO SW-4040 HRLE">ZEKINDO SW-4040 HRLE</option>
+                  <option value="ZEKINDO SW-400 HRLE">ZEKINDO SW-400 HRLE</option>
+                  <option value="ZEKINDO SW-440 HRLE">ZEKINDO SW-440 HRLE</option>
+                </optgroup>
+                <optgroup label="Other Membranes">
+                  <option value="SW30XLE-440i">SW30XLE-440i</option>
+                  <option value="SW30HRLE-440i">SW30HRLE-440i</option>
+                </optgroup>
+              </select>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            {Array.from({ length: stages }).map((_, i) => (
+              <div key={i}>
+                <label className="block text-sm font-medium mb-1">PVs in Stage {i+1}</label>
+                <input 
+                  type="number" 
+                  className="w-full p-2 border rounded" 
+                  value={pvPerStage[i]} 
+                  onChange={(e) => {
+                    const newPvPerStage = [...pvPerStage];
+                    newPvPerStage[i] = parseInt(e.target.value);
+                    setPvPerStage(newPvPerStage);
+                  }}
+                />
+              </div>
+            ))}
+            <div>
+              <label className="block text-sm font-medium mb-1">Feed TDS (mg/L)</label>
+              <input 
+                type="number" 
+                className="w-full p-2 border rounded" 
+                value={feedTDS} 
+                onChange={(e) => setFeedTDS(parseFloat(e.target.value))} 
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Flow Factor</label>
+              <input 
+                type="number" 
+                step="0.01"
+                min="0.5"
+                max="1.0"
+                className="w-full p-2 border rounded" 
+                value={flowFactor} 
+                onChange={(e) => setFlowFactor(parseFloat(e.target.value))} 
+              />
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Max Iterations</label>
+              <input 
+                type="number" 
+                className="w-full p-2 border rounded" 
+                value={iterationLimit} 
+                onChange={(e) => setIterationLimit(parseInt(e.target.value))} 
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Convergence Tolerance</label>
+              <input 
+                type="number" 
+                step="0.0001"
+                min="0.0001"
+                max="0.01"
+                className="w-full p-2 border rounded" 
+                value={convergenceTolerance} 
+                onChange={(e) => setConvergenceTolerance(parseFloat(e.target.value))} 
+              />
+            </div>
+          </div>
+          
+          <button 
+            className="w-full bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600"
+            onClick={runCalculations}
+            disabled={calculating}
+          >
+            {calculating ? 'Calculating...' : 'Calculate'}
+          </button>
+          
+          {convergenceStatus && (
+            <div className="mt-2 text-sm text-gray-600">
+              {convergenceStatus}
+            </div>
+          )}
+        </div>
+      </div>
+      
+      {systemResults && (
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <h2 className="text-xl font-bold mb-4">System Overview</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <p className="text-sm font-medium">Feed Flow</p>
+              <p className="text-xl">{systemResults.feedFlow} m³/h</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium">Feed TDS</p>
+              <p className="text-xl">{systemResults.feedTDS} mg/L</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium">Feed Pressure</p>
+              <p className="text-xl">{systemResults.feedPressure} psi</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium">System Recovery</p>
+              <p className="text-xl">{systemResults.recovery}%</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium">Permeate Flow</p>
+              <p className="text-xl">{systemResults.permeateFlow} m³/h</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium">Permeate TDS</p>
+              <p className="text-xl">{systemResults.permeateTDS} mg/L</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium">Average Flux</p>
+              <p className="text-xl">{systemResults.averageFlux} LMH</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium">Average NDP</p>
+              <p className="text-xl">{systemResults.averageNDP} psi</p>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {elementResults.length > 0 && (
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-xl font-bold mb-4">Element Results</h2>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stage</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PV</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Element</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Feed Flow (m³/h)</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Feed Pressure (psi)</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Feed TDS (mg/L)</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recovery (%)</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Flux (LMH)</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Permeate Flow (m³/h)</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Permeate TDS (mg/L)</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">NDP (psi)</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {elementResults.map((result, i) => (
+                  <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm">{result.stage}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm">{result.pvNumber}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm">{result.element}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm">{result.feedFlow}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm">{result.feedPressure}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm">{result.feedTDS}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm">{result.recovery}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm">{result.flux}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm">{result.permeateFlow}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm">{result.permeateTDS}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm">{result.ndp}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ROMembraneCalculator;
