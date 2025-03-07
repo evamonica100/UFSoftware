@@ -601,9 +601,6 @@ video {
   white-space: nowrap;
   border-width: 0;
 }
-.absolute {
-  position: absolute;
-}
 .relative {
   position: relative;
 }
