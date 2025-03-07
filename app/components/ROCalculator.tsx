@@ -11,14 +11,12 @@ const ROCalculator = () => {
       [7, 7, 7, 7, 7, 7],
       [7, 7, 7],
     ], // Array of arrays containing elements per vessel
-    elementArea: 400,
     temperature: 28,
     feedPressure: 600,
     permatePressure: 14.7,
     feedFlow: 150,
     foulingFactor: 0.8,
     feedTDS: 32000,
-    saltRejection: 0.998,
     recoveryTarget: 75, // Target recovery percentage
     iterationLimit: 50, // Maximum iterations for solver
     convergenceTolerance: 0.001, // Convergence tolerance
@@ -71,6 +69,26 @@ const ROCalculator = () => {
   
   // Membrane properties database
   const membraneProperties = {
+    // Original membranes
+    'SW30XLE-440i': {
+      area: 440, // ft²
+      waterPermeability: 0.125, // gfd/psi at 25°C
+      saltPermeability: 0.00005, // gfd
+      rejectionNominal: 0.997, // fraction
+      maxFlux: 22, // gfd
+      maxFeedFlowRate: 16, // gpm
+      maxPressureDrop: 15 // psi
+    },
+    'SW30HRLE-440i': {
+      area: 440,
+      waterPermeability: 0.11,
+      saltPermeability: 0.00002,
+      rejectionNominal: 0.9985,
+      maxFlux: 20,
+      maxFeedFlowRate: 16,
+      maxPressureDrop: 15
+    },
+    
     // ZEKINDO Brackish Water (BW) membranes
     'ZEKINDO BW-4040': {
       area: 82, // ft²
@@ -142,6 +160,24 @@ const ROCalculator = () => {
       waterPermeability: 0.0222, // gfd/psi
       saltPermeability: 0.000045, // gfd
       rejectionNominal: 0.996, // fraction
+      maxFlux: 16, // gfd
+      maxFeedFlowRate: 16, // gpm
+      maxPressureDrop: 15 // psi
+    },
+    'ZEKINDO SW-400 HRLE': {
+      area: 400, // ft²
+      waterPermeability: 0.0234, // gfd/psi
+      saltPermeability: 0.000035, // gfd
+      rejectionNominal: 0.997, // fraction
+      maxFlux: 16, // gfd
+      maxFeedFlowRate: 16, // gpm
+      maxPressureDrop: 15 // psi
+    },
+    'ZEKINDO SW-440 HRLE': {
+      area: 440, // ft²
+      waterPermeability: 0.0232, // gfd/psi
+      saltPermeability: 0.000035, // gfd
+      rejectionNominal: 0.997, // fraction
       maxFlux: 16, // gfd
       maxFeedFlowRate: 16, // gpm
       maxPressureDrop: 15 // psi
@@ -229,14 +265,12 @@ const ROCalculator = () => {
         [7, 7, 7, 7, 7, 7],
         [7, 7, 7],
       ], // Array of arrays containing elements per vessel
-      elementArea: 400,
       temperature: 28,
       feedPressure: 600,
       permatePressure: 14.7,
       feedFlow: 150,
       foulingFactor: 0.8,
       feedTDS: 32000,
-      saltRejection: 0.998,
       recoveryTarget: 75,
       iterationLimit: 50,
       convergenceTolerance: 0.001,
@@ -463,12 +497,7 @@ const ROCalculator = () => {
       
       // Get element type from selected membrane
       const elementType = inputs.elementType || selectedMembrane.model;
-      const selectedMembraneProp = membraneProperties[elementType] || {
-        area: inputs.elementArea,
-        waterPermeability: 0.1,
-        saltPermeability: 0.00005,
-        rejectionNominal: inputs.saltRejection
-      };
+      const selectedMembraneProp = membraneProperties[elementType] || membraneProperties['ZEKINDO SW-400 HR'];
       
       const tcf = calculateTCF(inputs.temperature);
       const initialFeedOsmoticPressure = calculateOsmoticPressure(
@@ -1137,14 +1166,12 @@ const ROCalculator = () => {
 
             {/* Other inputs */}
             {[
-              "elementArea",
               "temperature",
               "feedPressure",
               "permatePressure",
               "feedFlow",
               "foulingFactor",
               "feedTDS",
-              "saltRejection",
               "recoveryTarget",
               "recyclePercent",
               "flowFactor",
@@ -1175,6 +1202,31 @@ const ROCalculator = () => {
                 />
               </div>
             ))}
+            
+            {/* Element Type Selection */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Element Type
+              </label>
+              <select
+                name="elementType"
+                value={inputs.elementType}
+                onChange={(e) => {
+                  setInputs(prev => ({
+                    ...prev,
+                    elementType: e.target.value
+                  }))
+                }}
+                className="w-full p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500"
+              >
+                {Object.keys(membraneProperties).map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+              <div className="text-xs text-gray-500 mt-1">
+                Selected membrane area: {membraneProperties[inputs.elementType]?.area || 400} ft²
+              </div>
+            </div>
             
             {/* Advanced calculation settings */}
             <div className="space-y-2">
