@@ -35,6 +35,17 @@ interface LogEntry {
   permeateConductivity: number;
 }
 
+interface ReferenceConditions {
+  feedFlow: number;
+  feedPressure: number;
+  permeatePressure: number;
+  concentratePressure: number;
+  permeateFlow: number;
+  feedTemp: number;
+  feedConductivity: number;
+  permeateConductivity: number;
+}
+
 interface CalculatedResults {
   days: number;
   dP: number;
@@ -70,6 +81,19 @@ const OperatingData = () => {
 
   const [logs, setLogs] = useState<Array<LogEntry & CalculatedResults>>([]);
 
+  const [referenceConditions, setReferenceConditions] = useState<ReferenceConditions>({
+    feedFlow: 100,
+    feedPressure: 800,
+    permeatePressure: 0,
+    concentratePressure: 780,
+    permeateFlow: 45,
+    feedTemp: 25,
+    feedConductivity: 53000,
+    permeateConductivity: 300,
+  });
+
+  const [useReferenceForNormalization, setUseReferenceForNormalization] = useState<boolean>(false);
+
   const [tankSizing, setTankSizing] = useState<TankSizing>({
     vesselCount: 10,
     elementsPerVessel: 6,
@@ -89,12 +113,12 @@ const OperatingData = () => {
     entry: LogEntry,
     firstEntry?: LogEntry,
   ): CalculatedResults => {
-    // Reference values from first entry (baseline values)
-    const FdDsPsi = firstEntry ? firstEntry.feedPressure : entry.feedPressure;
-    const PrmDsFlw = firstEntry ? firstEntry.permeateFlow : entry.permeateFlow;
-    const ConDsFlw = firstEntry
-      ? firstEntry.feedFlow - firstEntry.permeateFlow
-      : entry.feedFlow - entry.permeateFlow;
+    // Determine reference values - either from first entry or from reference conditions
+    const referenceEntry = useReferenceForNormalization ? referenceConditions : (firstEntry || entry);
+    
+    const FdDsPsi = referenceEntry.feedPressure;
+    const PrmDsFlw = referenceEntry.permeateFlow;
+    const ConDsFlw = referenceEntry.feedFlow - referenceEntry.permeateFlow;
 
     // Days calculation (unchanged)
     const startDate = firstEntry
@@ -157,12 +181,37 @@ const OperatingData = () => {
   const handleAddEntry = () => {
     const firstEntry = logs[0];
     const results = calculateResults(currentEntry, firstEntry);
-    setLogs((prev) => [...prev, { ...currentEntry, ...results }]);
+    const newLogs = [...logs, { ...currentEntry, ...results }];
+    setLogs(newLogs);
+    
+    // Save logs and reference conditions to localStorage
+    localStorage.setItem('operatingData', JSON.stringify(newLogs));
+    localStorage.setItem('referenceConditions', JSON.stringify({
+      values: referenceConditions,
+      useForNormalization: useReferenceForNormalization
+    }));
+    
     setCurrentEntry({
       ...currentEntry,
       date: new Date().toISOString().split("T")[0],
     });
   };
+  
+  // Load data from localStorage on component mount
+  useEffect(() => {
+    const savedLogs = localStorage.getItem('operatingData');
+    const savedReferenceConditions = localStorage.getItem('referenceConditions');
+    
+    if (savedLogs) {
+      setLogs(JSON.parse(savedLogs));
+    }
+    
+    if (savedReferenceConditions) {
+      const parsed = JSON.parse(savedReferenceConditions);
+      setReferenceConditions(parsed.values);
+      setUseReferenceForNormalization(parsed.useForNormalization);
+    }
+  }, []);
 
   const calculateCleaningVolumes = () => {
     const CONVERSION_FACTOR = 1 / (144 * 7.48);
@@ -206,13 +255,19 @@ const OperatingData = () => {
   };
 
   const showCleaningRequirements = () => {
-    if (logs.length < 2) {
-      alert("Need at least two data points to calculate cleaning requirements");
+    if (logs.length < 1) {
+      alert("Need at least one data point to calculate cleaning requirements");
       return;
     }
 
     const latest = logs[logs.length - 1];
-    const baseline = logs[0];
+    // Use reference conditions as baseline if enabled, otherwise use first log entry
+    const baseline = useReferenceForNormalization ? 
+      { 
+        NQp: calculateResults(referenceConditions as LogEntry).NQp,
+        NSR: calculateResults(referenceConditions as LogEntry).NSR,
+        NdP: calculateResults(referenceConditions as LogEntry).NdP
+      } : logs[0];
 
     const flowDecline = ((latest.NQp - baseline.NQp) / baseline.NQp) * 100;
     const saltPassageIncrease =
@@ -237,6 +292,54 @@ const OperatingData = () => {
       <h2 className="text-2xl font-bold text-blue-800 mb-6">
         RO Membrane Evaluation
       </h2>
+
+      {/* Reference Conditions */}
+      <div className="mb-6 bg-gray-50 p-4 rounded-lg">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold text-blue-700">Reference Conditions</h3>
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="useReference"
+              checked={useReferenceForNormalization}
+              onChange={() => setUseReferenceForNormalization(!useReferenceForNormalization)}
+              className="mr-2"
+            />
+            <label htmlFor="useReference" className="text-sm text-gray-700">
+              Use for normalization
+            </label>
+          </div>
+        </div>
+        <p className="text-sm text-gray-600 mb-4">
+          These reference values will be used as the baseline for normalization calculations when enabled.
+          Otherwise, the first log entry will be used as the baseline.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {Object.keys(referenceConditions).map((key) => (
+            <div key={key} className="mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {key === 'feedFlow' ? 'Feed Flow (m³/h)' :
+                 key === 'feedPressure' ? 'Feed Press. (bar)' :
+                 key === 'permeatePressure' ? 'Perm. Press. (bar)' :
+                 key === 'concentratePressure' ? 'Conc. Press. (bar)' :
+                 key === 'permeateFlow' ? 'Perm. Flow (m³/h)' :
+                 key === 'feedTemp' ? 'Feed Temp. (°C)' :
+                 key === 'feedConductivity' ? 'Feed Cond. (µS/cm)' :
+                 'Perm. Cond. (µS/cm)'}
+              </label>
+              <input
+                type="number"
+                value={referenceConditions[key as keyof ReferenceConditions]}
+                onChange={(e) => setReferenceConditions(prev => ({
+                  ...prev,
+                  [key]: Number(e.target.value)
+                }))}
+                className="w-full p-2 border rounded"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Input Table */}
       <div className="mb-4">
@@ -415,91 +518,58 @@ const OperatingData = () => {
         <h3 className="text-lg font-semibold mb-4">
           Cleaning Requirements Analysis
         </h3>
-        {logs.length >= 2 && (
+        <div className="mb-2 text-sm text-gray-700">
+          <strong>Baseline source:</strong> {useReferenceForNormalization ? "Reference Conditions" : "First Log Entry"}
+        </div>
+        {logs.length >= 1 && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div
-              className={`p-4 rounded-lg ${
-                ((logs[logs.length - 1].NQp - logs[0].NQp) / logs[0].NQp) *
-                  100 <=
-                -10
-                  ? "bg-red-100"
-                  : "bg-green-100"
-              }`}
-            >
-              <h4 className="font-semibold">Normalized Flow Decline</h4>
-              <p className="text-2xl font-bold">
-                {(
-                  ((logs[logs.length - 1].NQp - logs[0].NQp) / logs[0].NQp) *
-                  100
-                ).toFixed(2)}
-                %
-              </p>
-              <p className="text-sm mt-2">
-                {((logs[logs.length - 1].NQp - logs[0].NQp) / logs[0].NQp) *
-                  100 <=
-                -10
-                  ? "Cleaning Required"
-                  : "Within Normal Range"}
-              </p>
-            </div>
+            {/* Calculate baseline values based on reference or first log */}
+            {(() => {
+              const latest = logs[logs.length - 1];
+              const baselineValues = useReferenceForNormalization ? 
+                { 
+                  NQp: calculateResults(referenceConditions as LogEntry).NQp,
+                  NSR: calculateResults(referenceConditions as LogEntry).NSR,
+                  NdP: calculateResults(referenceConditions as LogEntry).NdP
+                } : logs[0];
+              
+              const flowDecline = ((latest.NQp - baselineValues.NQp) / baselineValues.NQp) * 100;
+              const saltPassageIncrease = ((latest.NSR - baselineValues.NSR) / baselineValues.NSR) * 100;
+              const pressureDropIncrease = ((latest.NdP - baselineValues.NdP) / baselineValues.NdP) * 100;
+              
+              return (
+                <>
+                  <div className={`p-4 rounded-lg ${flowDecline <= -10 ? "bg-red-100" : "bg-green-100"}`}>
+                    <h4 className="font-semibold">Normalized Flow Decline</h4>
+                    <p className="text-2xl font-bold">{flowDecline.toFixed(2)}%</p>
+                    <p className="text-sm mt-2">
+                      {flowDecline <= -10 ? "Cleaning Required" : "Within Normal Range"}
+                    </p>
+                  </div>
 
-            <div
-              className={`p-4 rounded-lg ${
-                ((logs[logs.length - 1].NSR - logs[0].NSR) / logs[0].NSR) *
-                  100 >=
-                5
-                  ? "bg-red-100"
-                  : "bg-green-100"
-              }`}
-            >
-              <h4 className="font-semibold">Salt Passage Increase</h4>
-              <p className="text-2xl font-bold">
-                {(
-                  ((logs[logs.length - 1].NSR - logs[0].NSR) / logs[0].NSR) *
-                  100
-                ).toFixed(2)}
-                %
-              </p>
-              <p className="text-sm mt-2">
-                {((logs[logs.length - 1].NSR - logs[0].NSR) / logs[0].NSR) *
-                  100 >=
-                5
-                  ? "Cleaning Required"
-                  : "Within Normal Range"}
-              </p>
-            </div>
+                  <div className={`p-4 rounded-lg ${saltPassageIncrease >= 5 ? "bg-red-100" : "bg-green-100"}`}>
+                    <h4 className="font-semibold">Salt Passage Increase</h4>
+                    <p className="text-2xl font-bold">{saltPassageIncrease.toFixed(2)}%</p>
+                    <p className="text-sm mt-2">
+                      {saltPassageIncrease >= 5 ? "Cleaning Required" : "Within Normal Range"}
+                    </p>
+                  </div>
 
-            <div
-              className={`p-4 rounded-lg ${
-                ((logs[logs.length - 1].NdP - logs[0].NdP) / logs[0].NdP) *
-                  100 >=
-                15
-                  ? "bg-red-100"
-                  : "bg-green-100"
-              }`}
-            >
-              <h4 className="font-semibold">Pressure Drop Increase</h4>
-              <p className="text-2xl font-bold">
-                {(
-                  ((logs[logs.length - 1].NdP - logs[0].NdP) / logs[0].NdP) *
-                  100
-                ).toFixed(2)}
-                %
-              </p>
-              <p className="text-sm mt-2">
-                {((logs[logs.length - 1].NdP - logs[0].NdP) / logs[0].NdP) *
-                  100 >=
-                15
-                  ? "Cleaning Required"
-                  : "Within Normal Range"}
-              </p>
-            </div>
+                  <div className={`p-4 rounded-lg ${pressureDropIncrease >= 15 ? "bg-red-100" : "bg-green-100"}`}>
+                    <h4 className="font-semibold">Pressure Drop Increase</h4>
+                    <p className="text-2xl font-bold">{pressureDropIncrease.toFixed(2)}%</p>
+                    <p className="text-sm mt-2">
+                      {pressureDropIncrease >= 15 ? "Cleaning Required" : "Within Normal Range"}
+                    </p>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         )}
-        {logs.length < 2 && (
+        {logs.length < 1 && (
           <p className="text-gray-600">
-            At least two data points are needed to analyze cleaning
-            requirements.
+            At least one data point is needed to analyze cleaning requirements.
           </p>
         )}
       </div>
