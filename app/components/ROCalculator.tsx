@@ -12,7 +12,6 @@ const ROCalculator = () => {
       [7, 7, 7],
     ], // Array of arrays containing elements per vessel
     temperature: 28,
-    permatePressure: 14.7,
     feedFlow: 150,
     foulingFactor: 0.8,
     feedTDS: 32000,
@@ -267,7 +266,6 @@ const ROCalculator = () => {
         [7, 7, 7],
       ], // Array of arrays containing elements per vessel
       temperature: 28,
-      permatePressure: 14.7,
       feedFlow: 150,
       foulingFactor: 0.8,
       feedTDS: 32000,
@@ -350,10 +348,10 @@ const ROCalculator = () => {
     FF: number,
     feedP: number,
     pressureDrop: number,
-    permP: number,
     feedOP: number,
     permOP: number,
   ) => {
+    const permP = 14.7; // Constant permeate pressure (atmospheric)
     const netDrivingPressure =
       feedP - pressureDrop / 2 - permP - (feedOP - permOP);
     return (A * area * TCF * FF * netDrivingPressure * elements) / 24; // Convert to m³/h
@@ -678,8 +676,11 @@ const ROCalculator = () => {
               // Calculate effective osmotic pressure with CP
               const effectiveOsmoticPressure = feedOsmoticPressure * polarizationFactor;
               
+              // Use constant permeate pressure (atmospheric pressure)
+              const permatePressure = 14.7; // psi (atmospheric pressure)
+              
               // Calculate net driving pressure
-              const ndp = Math.max(0, pvFeedPressure - effectiveOsmoticPressure - inputs.permatePressure);
+              const ndp = Math.max(0, pvFeedPressure - effectiveOsmoticPressure - permatePressure);
               element.ndp = ndp;
               
               // Calculate water flux through membrane
@@ -997,47 +998,34 @@ const ROCalculator = () => {
                   Model
                 </th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                  Flow (m³/d)
+                  Area (ft²)
                 </th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                  Rejection (%)
+                  Nominal Rejection (%)
                 </th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                  Pressure (psi)
+                  Max Flux (GFD)
                 </th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                  Select
+                  Max Feed Flow (GPM)
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {(selectedMembrane.type === "SW"
-                ? membraneSpecs.swro
-                : membraneSpecs.bwro
-              ).map((membrane) => (
-                <tr
-                  key={membrane.model}
-                  className={
-                    selectedMembrane.model === membrane.model
-                      ? "bg-blue-50"
-                      : ""
-                  }
-                >
-                  <td className="px-4 py-2">{membrane.model}</td>
-                  <td className="px-4 py-2">{membrane.flow}</td>
-                  <td className="px-4 py-2">{membrane.rejection}</td>
-                  <td className="px-4 py-2">{membrane.pressure}</td>
-                  <td className="px-4 py-2">
-                    <input
-                      type="radio"
-                      name="membraneModel"
-                      checked={selectedMembrane.model === membrane.model}
-                      onChange={() => setSelectedMembrane(membrane)}
-                      className="form-radio h-4 w-4 text-blue-600"
-                    />
-                  </td>
-                </tr>
-              ))}
+              {Object.keys(membraneProperties).filter(model => 
+                model.includes(selectedMembrane.type === "SW" ? "SW" : "BW")
+              ).map((model) => {
+                const membrane = membraneProperties[model];
+                return (
+                  <tr key={model}>
+                    <td className="px-4 py-2">{model}</td>
+                    <td className="px-4 py-2">{membrane.area}</td>
+                    <td className="px-4 py-2">{(membrane.rejectionNominal * 100).toFixed(2)}</td>
+                    <td className="px-4 py-2">{membrane.maxFlux}</td>
+                    <td className="px-4 py-2">{membrane.maxFeedFlowRate}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1169,40 +1157,52 @@ const ROCalculator = () => {
             {/* Other inputs */}
             {[
               "temperature",
-              "permatePressure",
               "feedFlow",
               "foulingFactor",
               "feedTDS",
               "recoveryTarget",
               "recyclePercent",
               "flowFactor",
-            ].map((key) => (
-              <div key={key} className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  {inputLabels[key]?.label || 
-                    (key === "recoveryTarget" ? "Target Recovery" : 
+            ].map((key) => {
+              const unitMap = {
+                "temperature": "°C",
+                "feedFlow": "m³/h",
+                "foulingFactor": "",
+                "feedTDS": "mg/L",
+                "recoveryTarget": "%",
+                "recyclePercent": "%",
+                "flowFactor": "",
+              };
+              
+              return (
+                <div key={key} className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    {key === "recoveryTarget" ? "Target Recovery" : 
                      key === "recyclePercent" ? "Recycle Percent" :
-                     key === "flowFactor" ? "Flow Factor" : key)}
-                  {inputLabels[key]?.unit || 
-                    (key === "recoveryTarget" || key === "recyclePercent" ? "%" : "") && (
-                    <span className="text-gray-500 ml-1">
-                      ({inputLabels[key]?.unit || 
-                    (key === "recoveryTarget" || key === "recyclePercent" ? "%" : "")})
-                    </span>
-                  )}
-                </label>
-                <input
-                  type="number"
-                  name={key}
-                  value={inputs[key]}
-                  onChange={handleInputChange}
-                  className="w-full p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500"
-                  step="any"
-                  min={key === "flowFactor" ? "0" : key === "recyclePercent" ? "0" : undefined}
-                  max={key === "flowFactor" ? "1" : key === "recyclePercent" ? "100" : undefined}
-                />
-              </div>
-            ))}
+                     key === "flowFactor" ? "Flow Factor" :
+                     key === "temperature" ? "Temperature" :
+                     key === "feedFlow" ? "Feed Flow" :
+                     key === "feedTDS" ? "Feed TDS" :
+                     key === "foulingFactor" ? "Fouling Factor" : key}
+                    {unitMap[key] && (
+                      <span className="text-gray-500 ml-1">
+                        ({unitMap[key]})
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    type="number"
+                    name={key}
+                    value={inputs[key]}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500"
+                    step="any"
+                    min={key === "flowFactor" ? "0" : key === "recyclePercent" ? "0" : undefined}
+                    max={key === "flowFactor" ? "1" : key === "recyclePercent" ? "100" : undefined}
+                  />
+                </div>
+              );
+            })}
             
             {/* Element Type Selection */}
             <div className="space-y-2">
