@@ -300,10 +300,6 @@ const OperatingData = () => {
       ? referenceConditions
       : firstEntry || entry;
 
-    const FdDsPsi = referenceEntry.feedPressure;
-    const PrmDsFlw = referenceEntry.permeateFlow;
-    const ConDsFlw = referenceEntry.feedFlow - referenceEntry.permeateFlow;
-
     // Days calculation (unchanged)
     const startDate = firstEntry
       ? new Date(firstEntry.date)
@@ -319,38 +315,78 @@ const OperatingData = () => {
 
     // Calculate concentrate flow
     const concentrateFlow = entry.feedFlow - entry.permeateFlow;
-
-    // Osmotic pressure calculation - adapted from BASIC version
-    // Using conductivity values as proxy for concentration
-    const OsmPsi = (entry.feedConductivity - entry.permeateConductivity) * 0.01;
-
-    // Temperature correction factor - using 2500 constant from original BASIC code
-    // Temperature is already in Celsius in your React version
-    const TmpCrFct = Math.exp(2500 * (1 / (273 + entry.feedTemp) - 1 / 298));
-
-    // Normalized pressure drop calculation - adapted from BASIC version
-    // This accounts for flow rate changes
-    const NdP =
-      ((entry.permeateFlow + 2 * concentrateFlow) /
-        (PrmDsFlw + 2 * ConDsFlw)) **
-        2 *
-      dP;
-
-    // Normalized permeate flow - adapted from BASIC version with proper pressure normalization
+    
+    // Temperature correction factor using industry standard approach
+    const calculateTCF = (temp: number): number => {
+      if (temp >= 25) {
+        return Math.exp(2640 * (1/298 - 1/(273 + temp)));
+      }
+      return Math.exp(3020 * (1/298 - 1/(273 + temp)));
+    };
+    
+    const currentTCF = calculateTCF(entry.feedTemp);
+    const referenceTCF = calculateTCF(referenceEntry.feedTemp);
+    
+    // Calculate average feed-concentrate TDS using log-mean approach
+    const calculateFeedConcentrate = (feedTDS: number, recovery: number): number => {
+      return feedTDS * (Math.log(1/(1-recovery))/recovery);
+    };
+    
+    // Use conductivity as proxy for TDS
+    const currentFeedTDS = entry.feedConductivity;
+    const referenceFeedTDS = referenceEntry.feedConductivity;
+    
+    const currentRecovery = F;
+    const referenceRecovery = referenceEntry.permeateFlow / referenceEntry.feedFlow;
+    
+    const currentFC = calculateFeedConcentrate(currentFeedTDS, currentRecovery);
+    const referenceFC = calculateFeedConcentrate(referenceFeedTDS, referenceRecovery);
+    
+    // Calculate osmotic pressure using industry standard approach
+    const calculateOsmoticPressure = (tds: number, temp: number): number => {
+      if (tds < 20000) {
+        return (tds * (temp + 320)) / 491000;
+      }
+      return (tds * 1.12 * (273 + temp)) / 58500;
+    };
+    
+    const currentOP = calculateOsmoticPressure(currentFC, entry.feedTemp);
+    const referenceOP = calculateOsmoticPressure(referenceFC, referenceEntry.feedTemp);
+    
+    // Calculate net driving pressure (NDP)
+    const currentNDP = entry.feedPressure - (dP/2) - entry.permeatePressure - currentOP;
+    const referenceNDP = referenceEntry.feedPressure - 
+                        ((referenceEntry.feedPressure - referenceEntry.concentratePressure)/2) - 
+                        referenceEntry.permeatePressure - 
+                        referenceOP;
+    
+    // Normalized pressure drop calculation - accounts for flow rate changes
+    const refConFlow = referenceEntry.feedFlow - referenceEntry.permeateFlow;
+    const NdP = ((entry.permeateFlow + 2 * concentrateFlow) /
+        (referenceEntry.permeateFlow + 2 * refConFlow)) ** 2 * dP;
+    
+    // Normalized permeate flow using industry standard formula
+    // NQp = Qp * (NDPref/NDPact) * (TCFref/TCFact)
     let NQp = 0;
-    if (entry.feedPressure > 0 && entry.feedPressure - OsmPsi > 0) {
-      // This matches the more complex calculation from BASIC code
-      NQp =
-        ((entry.permeateFlow * TmpCrFct * FdDsPsi) /
-          (entry.feedPressure - OsmPsi)) *
-        (2 / (entry.feedPressure - entry.concentratePressure));
+    if (currentNDP > 0 && referenceNDP > 0) {
+      NQp = entry.permeateFlow * (referenceNDP / currentNDP) * (referenceTCF / currentTCF);
     }
-
-    // Normalized system pressure
-    const NSP = entry.feedPressure / TmpCrFct;
-
-    // Normalized salt rejection - salt rejection is typically not temperature-corrected
-    const NSR = R;
+    
+    // Normalized system pressure adjusted for temperature effects
+    const NSP = entry.feedPressure / currentTCF;
+    
+    // Normalized salt rejection - using standard formula
+    // For salt rejection, typically use the ratio of salt passage
+    // Salt passage is (1 - rejection)
+    const currentSP = 1 - (R/100);
+    const referenceSP = 1 - ((1 - referenceEntry.permeateConductivity / referenceEntry.feedConductivity) * 100)/100;
+    
+    // Temperature correction for salt passage
+    const saltPassageTCF = Math.exp(0.05 * (entry.feedTemp - referenceEntry.feedTemp));
+    
+    // Normalized salt rejection
+    const normalizedSP = currentSP / saltPassageTCF;
+    const NSR = (1 - normalizedSP) * 100;
 
     return { days, dP, F, R, NQp, NSP, NSR, NdP };
   };
