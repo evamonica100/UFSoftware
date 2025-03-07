@@ -81,18 +81,20 @@ const OperatingData = () => {
 
   const [logs, setLogs] = useState<Array<LogEntry & CalculatedResults>>([]);
 
-  const [referenceConditions, setReferenceConditions] = useState<ReferenceConditions>({
-    feedFlow: 100,
-    feedPressure: 800,
-    permeatePressure: 0,
-    concentratePressure: 780,
-    permeateFlow: 45,
-    feedTemp: 25,
-    feedConductivity: 53000,
-    permeateConductivity: 300,
-  });
+  const [referenceConditions, setReferenceConditions] =
+    useState<ReferenceConditions>({
+      feedFlow: 100,
+      feedPressure: 800,
+      permeatePressure: 0,
+      concentratePressure: 780,
+      permeateFlow: 45,
+      feedTemp: 25,
+      feedConductivity: 53000,
+      permeateConductivity: 300,
+    });
 
-  const [useReferenceForNormalization, setUseReferenceForNormalization] = useState<boolean>(false);
+  const [useReferenceForNormalization, setUseReferenceForNormalization] =
+    useState<boolean>(false);
 
   const [tankSizing, setTankSizing] = useState<TankSizing>({
     vesselCount: 10,
@@ -114,8 +116,10 @@ const OperatingData = () => {
     firstEntry?: LogEntry,
   ): CalculatedResults => {
     // Determine reference values - either from first entry or from reference conditions
-    const referenceEntry = useReferenceForNormalization ? referenceConditions : (firstEntry || entry);
-    
+    const referenceEntry = useReferenceForNormalization
+      ? referenceConditions
+      : firstEntry || entry;
+
     const FdDsPsi = referenceEntry.feedPressure;
     const PrmDsFlw = referenceEntry.permeateFlow;
     const ConDsFlw = referenceEntry.feedFlow - referenceEntry.permeateFlow;
@@ -183,29 +187,34 @@ const OperatingData = () => {
     const results = calculateResults(currentEntry, firstEntry);
     const newLogs = [...logs, { ...currentEntry, ...results }];
     setLogs(newLogs);
-    
+
     // Save logs and reference conditions to localStorage
-    localStorage.setItem('operatingData', JSON.stringify(newLogs));
-    localStorage.setItem('referenceConditions', JSON.stringify({
-      values: referenceConditions,
-      useForNormalization: useReferenceForNormalization
-    }));
-    
+    localStorage.setItem("operatingData", JSON.stringify(newLogs));
+    localStorage.setItem(
+      "referenceConditions",
+      JSON.stringify({
+        values: referenceConditions,
+        useForNormalization: useReferenceForNormalization,
+      }),
+    );
+
     setCurrentEntry({
       ...currentEntry,
       date: new Date().toISOString().split("T")[0],
     });
   };
-  
+
   // Load data from localStorage on component mount
   useEffect(() => {
-    const savedLogs = localStorage.getItem('operatingData');
-    const savedReferenceConditions = localStorage.getItem('referenceConditions');
-    
+    const savedLogs = localStorage.getItem("operatingData");
+    const savedReferenceConditions = localStorage.getItem(
+      "referenceConditions",
+    );
+
     if (savedLogs) {
       setLogs(JSON.parse(savedLogs));
     }
-    
+
     if (savedReferenceConditions) {
       const parsed = JSON.parse(savedReferenceConditions);
       setReferenceConditions(parsed.values);
@@ -262,12 +271,13 @@ const OperatingData = () => {
 
     const latest = logs[logs.length - 1];
     // Use reference conditions as baseline if enabled, otherwise use first log entry
-    const baseline = useReferenceForNormalization ? 
-      { 
-        NQp: calculateResults(referenceConditions as LogEntry).NQp,
-        NSR: calculateResults(referenceConditions as LogEntry).NSR,
-        NdP: calculateResults(referenceConditions as LogEntry).NdP
-      } : logs[0];
+    const baseline = useReferenceForNormalization
+      ? {
+          NQp: calculateResults(referenceConditions as LogEntry).NQp,
+          NSR: calculateResults(referenceConditions as LogEntry).NSR,
+          NdP: calculateResults(referenceConditions as LogEntry).NdP,
+        }
+      : logs[0];
 
     const flowDecline = ((latest.NQp - baseline.NQp) / baseline.NQp) * 100;
     const saltPassageIncrease =
@@ -296,13 +306,17 @@ const OperatingData = () => {
       {/* Reference Conditions */}
       <div className="mb-6 bg-gray-50 p-4 rounded-lg">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold text-blue-700">Reference Conditions</h3>
+          <h3 className="text-lg font-semibold text-blue-700">
+            Reference Conditions
+          </h3>
           <div className="flex items-center">
             <input
               type="checkbox"
               id="useReference"
               checked={useReferenceForNormalization}
-              onChange={() => setUseReferenceForNormalization(!useReferenceForNormalization)}
+              onChange={() =>
+                setUseReferenceForNormalization(!useReferenceForNormalization)
+              }
               className="mr-2"
             />
             <label htmlFor="useReference" className="text-sm text-gray-700">
@@ -311,29 +325,40 @@ const OperatingData = () => {
           </div>
         </div>
         <p className="text-sm text-gray-600 mb-4">
-          These reference values will be used as the baseline for normalization calculations when enabled.
-          Otherwise, the first log entry will be used as the baseline.
+          These reference values will be used as the baseline for normalization
+          calculations when enabled. Otherwise, the first log entry will be used
+          as the baseline. Enter the value based on your operating data at start
+          up or based on the operating design of your RO membrane.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {Object.keys(referenceConditions).map((key) => (
             <div key={key} className="mb-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {key === 'feedFlow' ? 'Feed Flow (m³/h)' :
-                 key === 'feedPressure' ? 'Feed Press. (bar)' :
-                 key === 'permeatePressure' ? 'Perm. Press. (bar)' :
-                 key === 'concentratePressure' ? 'Conc. Press. (bar)' :
-                 key === 'permeateFlow' ? 'Perm. Flow (m³/h)' :
-                 key === 'feedTemp' ? 'Feed Temp. (°C)' :
-                 key === 'feedConductivity' ? 'Feed Cond. (µS/cm)' :
-                 'Perm. Cond. (µS/cm)'}
+                {key === "feedFlow"
+                  ? "Feed Flow (m³/h)"
+                  : key === "feedPressure"
+                    ? "Feed Press. (bar)"
+                    : key === "permeatePressure"
+                      ? "Perm. Press. (bar)"
+                      : key === "concentratePressure"
+                        ? "Conc. Press. (bar)"
+                        : key === "permeateFlow"
+                          ? "Perm. Flow (m³/h)"
+                          : key === "feedTemp"
+                            ? "Feed Temp. (°C)"
+                            : key === "feedConductivity"
+                              ? "Feed Cond. (µS/cm)"
+                              : "Perm. Cond. (µS/cm)"}
               </label>
               <input
                 type="number"
                 value={referenceConditions[key as keyof ReferenceConditions]}
-                onChange={(e) => setReferenceConditions(prev => ({
-                  ...prev,
-                  [key]: Number(e.target.value)
-                }))}
+                onChange={(e) =>
+                  setReferenceConditions((prev) => ({
+                    ...prev,
+                    [key]: Number(e.target.value),
+                  }))
+                }
                 className="w-full p-2 border rounded"
               />
             </div>
@@ -519,47 +544,72 @@ const OperatingData = () => {
           Cleaning Requirements Analysis
         </h3>
         <div className="mb-2 text-sm text-gray-700">
-          <strong>Baseline source:</strong> {useReferenceForNormalization ? "Reference Conditions" : "First Log Entry"}
+          <strong>Baseline source:</strong>{" "}
+          {useReferenceForNormalization
+            ? "Reference Conditions"
+            : "First Log Entry"}
         </div>
         {logs.length >= 1 && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Calculate baseline values based on reference or first log */}
             {(() => {
               const latest = logs[logs.length - 1];
-              const baselineValues = useReferenceForNormalization ? 
-                { 
-                  NQp: calculateResults(referenceConditions as LogEntry).NQp,
-                  NSR: calculateResults(referenceConditions as LogEntry).NSR,
-                  NdP: calculateResults(referenceConditions as LogEntry).NdP
-                } : logs[0];
-              
-              const flowDecline = ((latest.NQp - baselineValues.NQp) / baselineValues.NQp) * 100;
-              const saltPassageIncrease = ((latest.NSR - baselineValues.NSR) / baselineValues.NSR) * 100;
-              const pressureDropIncrease = ((latest.NdP - baselineValues.NdP) / baselineValues.NdP) * 100;
-              
+              const baselineValues = useReferenceForNormalization
+                ? {
+                    NQp: calculateResults(referenceConditions as LogEntry).NQp,
+                    NSR: calculateResults(referenceConditions as LogEntry).NSR,
+                    NdP: calculateResults(referenceConditions as LogEntry).NdP,
+                  }
+                : logs[0];
+
+              const flowDecline =
+                ((latest.NQp - baselineValues.NQp) / baselineValues.NQp) * 100;
+              const saltPassageIncrease =
+                ((latest.NSR - baselineValues.NSR) / baselineValues.NSR) * 100;
+              const pressureDropIncrease =
+                ((latest.NdP - baselineValues.NdP) / baselineValues.NdP) * 100;
+
               return (
                 <>
-                  <div className={`p-4 rounded-lg ${flowDecline <= -10 ? "bg-red-100" : "bg-green-100"}`}>
+                  <div
+                    className={`p-4 rounded-lg ${flowDecline <= -10 ? "bg-red-100" : "bg-green-100"}`}
+                  >
                     <h4 className="font-semibold">Normalized Flow Decline</h4>
-                    <p className="text-2xl font-bold">{flowDecline.toFixed(2)}%</p>
+                    <p className="text-2xl font-bold">
+                      {flowDecline.toFixed(2)}%
+                    </p>
                     <p className="text-sm mt-2">
-                      {flowDecline <= -10 ? "Cleaning Required" : "Within Normal Range"}
+                      {flowDecline <= -10
+                        ? "Cleaning Required"
+                        : "Within Normal Range"}
                     </p>
                   </div>
 
-                  <div className={`p-4 rounded-lg ${saltPassageIncrease >= 5 ? "bg-red-100" : "bg-green-100"}`}>
+                  <div
+                    className={`p-4 rounded-lg ${saltPassageIncrease >= 5 ? "bg-red-100" : "bg-green-100"}`}
+                  >
                     <h4 className="font-semibold">Salt Passage Increase</h4>
-                    <p className="text-2xl font-bold">{saltPassageIncrease.toFixed(2)}%</p>
+                    <p className="text-2xl font-bold">
+                      {saltPassageIncrease.toFixed(2)}%
+                    </p>
                     <p className="text-sm mt-2">
-                      {saltPassageIncrease >= 5 ? "Cleaning Required" : "Within Normal Range"}
+                      {saltPassageIncrease >= 5
+                        ? "Cleaning Required"
+                        : "Within Normal Range"}
                     </p>
                   </div>
 
-                  <div className={`p-4 rounded-lg ${pressureDropIncrease >= 15 ? "bg-red-100" : "bg-green-100"}`}>
+                  <div
+                    className={`p-4 rounded-lg ${pressureDropIncrease >= 15 ? "bg-red-100" : "bg-green-100"}`}
+                  >
                     <h4 className="font-semibold">Pressure Drop Increase</h4>
-                    <p className="text-2xl font-bold">{pressureDropIncrease.toFixed(2)}%</p>
+                    <p className="text-2xl font-bold">
+                      {pressureDropIncrease.toFixed(2)}%
+                    </p>
                     <p className="text-sm mt-2">
-                      {pressureDropIncrease >= 15 ? "Cleaning Required" : "Within Normal Range"}
+                      {pressureDropIncrease >= 15
+                        ? "Cleaning Required"
+                        : "Within Normal Range"}
                     </p>
                   </div>
                 </>
