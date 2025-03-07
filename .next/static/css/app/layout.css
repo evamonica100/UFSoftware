@@ -681,9 +681,6 @@ video {
 .h-11 {
   height: 2.75rem;
 }
-.h-4 {
-  height: 1rem;
-}
 .h-5 {
   height: 1.25rem;
 }
@@ -704,9 +701,6 @@ video {
 }
 .w-11 {
   width: 2.75rem;
-}
-.w-4 {
-  width: 1rem;
 }
 .w-5 {
   width: 1.25rem;
