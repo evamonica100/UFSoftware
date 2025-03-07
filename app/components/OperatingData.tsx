@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Line } from "react-chartjs-2";
+import * as XLSX from 'xlsx';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -67,6 +68,7 @@ interface TankSizing {
 }
 
 const OperatingData = () => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [currentEntry, setCurrentEntry] = useState<LogEntry>({
     date: new Date().toISOString().split("T")[0],
     feedFlow: 0,
@@ -78,6 +80,184 @@ const OperatingData = () => {
     feedConductivity: 0,
     permeateConductivity: 0,
   });
+  
+  // Create Excel template for download
+  const createExcelTemplate = () => {
+    // Create workbook and worksheet
+    const wb = XLSX.utils.book_new();
+    
+    // Create headers for template
+    const headers = [
+      "Date", 
+      "Feed Flow (m³/h)", 
+      "Feed Pressure (bar)", 
+      "Permeate Pressure (bar)", 
+      "Concentrate Pressure (bar)", 
+      "Permeate Flow (m³/h)", 
+      "Feed Temp (°C)", 
+      "Feed Conductivity (µS/cm)", 
+      "Permeate Conductivity (µS/cm)"
+    ];
+    
+    // Add sample data row
+    const sampleData = [
+      new Date().toISOString().split("T")[0],
+      "100.0",
+      "800.0",
+      "0.0",
+      "780.0",
+      "45.0",
+      "25.0", 
+      "53000.0",
+      "300.0"
+    ];
+    
+    // Combine headers and sample data
+    const wsData = [headers, sampleData];
+    
+    // Create worksheet
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    
+    // Add notes about the template format
+    ws['!cols'] = headers.map(() => ({ wch: 20 })); // Set column width
+    
+    // Add the worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, "RO Operating Data");
+    
+    // Generate template file
+    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const template = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    
+    // Create download link
+    const url = URL.createObjectURL(template);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'RO_Data_Template.xlsx';
+    
+    // Trigger download
+    link.click();
+    
+    // Clean up
+    URL.revokeObjectURL(url);
+  };
+  
+  // Handle file import
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    
+    if (!file) return;
+    
+    const reader = new FileReader();
+    
+    reader.onload = (evt) => {
+      // Parse workbook
+      const bstr = evt.target?.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      
+      // Get first worksheet
+      const wsname = wb.SheetNames[0];
+      const ws = wb.Sheets[wsname];
+      
+      // Convert to JSON
+      const data = XLSX.utils.sheet_to_json<any>(ws, { header: 1 });
+      
+      // Skip header row and process data rows
+      const importedLogs: LogEntry[] = [];
+      
+      for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        if (row.length < 9) continue; // Skip incomplete rows
+        
+        const entry: LogEntry = {
+          date: row[0] || new Date().toISOString().split("T")[0],
+          feedFlow: parseFloat(row[1]) || 0,
+          feedPressure: parseFloat(row[2]) || 0,
+          permeatePressure: parseFloat(row[3]) || 0,
+          concentratePressure: parseFloat(row[4]) || 0,
+          permeateFlow: parseFloat(row[5]) || 0,
+          feedTemp: parseFloat(row[6]) || 0,
+          feedConductivity: parseFloat(row[7]) || 0,
+          permeateConductivity: parseFloat(row[8]) || 0,
+        };
+        
+        importedLogs.push(entry);
+      }
+      
+      // Process imported data and add calculated results
+      const processedLogs = importedLogs.map((entry, index) => {
+        const firstEntry = index === 0 ? entry : importedLogs[0];
+        const results = calculateResults(entry, firstEntry);
+        return { ...entry, ...results };
+      });
+      
+      // Set the logs with the imported data
+      setLogs(processedLogs);
+      
+      // Save to localStorage
+      localStorage.setItem("operatingData", JSON.stringify(processedLogs));
+      
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    };
+    
+    reader.readAsBinaryString(file);
+  };
+  
+  // Export current data to Excel
+  const exportToExcel = () => {
+    if (logs.length === 0) {
+      alert("No data to export");
+      return;
+    }
+    
+    // Create workbook and worksheet
+    const wb = XLSX.utils.book_new();
+    
+    // Prepare data for export with all properties
+    const exportData = logs.map(log => ({
+      "Date": log.date,
+      "Feed Flow (m³/h)": log.feedFlow,
+      "Feed Pressure (bar)": log.feedPressure,
+      "Permeate Pressure (bar)": log.permeatePressure,
+      "Concentrate Pressure (bar)": log.concentratePressure,
+      "Permeate Flow (m³/h)": log.permeateFlow,
+      "Feed Temp (°C)": log.feedTemp,
+      "Feed Conductivity (µS/cm)": log.feedConductivity,
+      "Permeate Conductivity (µS/cm)": log.permeateConductivity,
+      "Days": log.days,
+      "Differential Pressure (bar)": log.dP,
+      "Flow Factor (%)": log.F * 100,
+      "Recovery (%)": log.R,
+      "Normalized Permeate Flow (m³/h)": log.NQp,
+      "Normalized System Pressure (bar)": log.NSP,
+      "Normalized Salt Rejection (%)": log.NSR,
+      "Normalized Differential Pressure (bar)": log.NdP
+    }));
+    
+    // Convert to worksheet
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    
+    // Add the worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, "RO Operating Data");
+    
+    // Generate Excel file
+    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    
+    // Create download link
+    const url = URL.createObjectURL(data);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'RO_Operating_Data.xlsx';
+    
+    // Trigger download
+    link.click();
+    
+    // Clean up
+    URL.revokeObjectURL(url);
+  };
 
   const [logs, setLogs] = useState<Array<LogEntry & CalculatedResults>>([]);
 
@@ -368,7 +548,46 @@ const OperatingData = () => {
 
       {/* Input Table */}
       <div className="mb-4">
-        <h3 className="text-lg font-semibold mb-4">Input Parameters</h3>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold">Input Parameters</h3>
+          <div className="flex space-x-2">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              accept=".xlsx, .xls"
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+              </svg>
+              Import Excel
+            </button>
+            <button
+              onClick={exportToExcel}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center"
+              disabled={logs.length === 0}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 9.293a1 1 0 010 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414L2 10.586V4a1 1 0 012 0v6.586l1.293-1.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+              Export Data
+            </button>
+            <button
+              onClick={createExcelTemplate}
+              className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 flex items-center"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V7.414A2 2 0 0015.414 6L12 2.586A2 2 0 0010.586 2H6zm5 6a1 1 0 10-2 0v3.586l-1.293-1.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V8z" clipRule="evenodd" />
+              </svg>
+              Download Template
+            </button>
+          </div>
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-full border border-gray-200">
             <thead>
@@ -427,6 +646,16 @@ const OperatingData = () => {
         </div>
       </div>
 
+      {/* Import/Export Help */}
+      <div className="mb-4 bg-blue-50 p-4 rounded-lg text-sm text-blue-800">
+        <h4 className="font-semibold mb-1">Import/Export Instructions:</h4>
+        <ul className="list-disc pl-5 space-y-1">
+          <li><strong>Import Excel:</strong> Upload data from an Excel file. The file should match the template format.</li>
+          <li><strong>Export Data:</strong> Download current data as an Excel file including all calculated results.</li>
+          <li><strong>Download Template:</strong> Get a blank Excel template with the correct format for data import.</li>
+        </ul>
+      </div>
+      
       {/* Results Table */}
       <div className="mb-8">
         <h3 className="text-lg font-semibold mb-4">Results</h3>
