@@ -257,28 +257,22 @@ const ROCalculator = () => {
     return feedTDS * (1 - effectiveRejection);
   };
   const resetCalculator = () => {
-    // Define default values
-    const defaultInputs = {
-      stages: 2,
-      stageVessels: [6, 3], // Array of vessels per stage
-      vesselElements: [
-        [7, 7, 7, 7, 7, 7],
-        [7, 7, 7],
-      ], // Array of arrays containing elements per vessel
-      temperature: 28,
-      feedFlow: 150,
-      foulingFactor: 0.8,
-      feedTDS: 32000,
-      recoveryTarget: 75,
-      iterationLimit: 50,
+    // Reset inputs to empty values
+    setInputs({
+      stages: 0,
+      stageVessels: [], // Empty array of vessels per stage
+      vesselElements: [], // Empty array of arrays containing elements per vessel
+      temperature: 0,
+      feedFlow: 0,
+      foulingFactor: 0,
+      feedTDS: 0,
+      recoveryTarget: 0,
+      iterationLimit: 50, // Keep reasonable defaults for calculation parameters
       convergenceTolerance: 0.001,
       recyclePercent: 0,
-      flowFactor: 0.85,
-      elementType: 'ZEKINDO SW-400 HR',
-    };
-    
-    // Reset inputs to default values
-    setInputs(defaultInputs);
+      flowFactor: 0,
+      elementType: '',
+    });
 
     // Reset results
     setResults({
@@ -299,8 +293,8 @@ const ROCalculator = () => {
       },
     });
 
-    // Reset membrane selection to match the default element type
-    setSelectedMembrane(membraneSpecs.swro[1]);
+    // Reset membrane selection
+    setSelectedMembrane(membraneSpecs.swro[0]);
 
     // Clear charts
     const ctxConc = document.getElementById(
@@ -324,13 +318,11 @@ const ROCalculator = () => {
     setIterationCount(0);
     setConvergenceStatus('');
     
-    // Ensure the form fields are updated with default values
+    // Clear form fields by resetting to empty values
     setTimeout(() => {
       const formElements = document.querySelectorAll('input[type="number"]');
       formElements.forEach((el: any) => {
-        if (el.name && defaultInputs[el.name] !== undefined) {
-          el.value = defaultInputs[el.name];
-        }
+        el.value = '';
       });
     }, 0);
   };
