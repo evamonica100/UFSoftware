@@ -257,8 +257,8 @@ const ROCalculator = () => {
     return feedTDS * (1 - effectiveRejection);
   };
   const resetCalculator = () => {
-    // Reset inputs to default values
-    setInputs({
+    // Define default values
+    const defaultInputs = {
       stages: 2,
       stageVessels: [6, 3], // Array of vessels per stage
       vesselElements: [
@@ -275,7 +275,10 @@ const ROCalculator = () => {
       recyclePercent: 0,
       flowFactor: 0.85,
       elementType: 'ZEKINDO SW-400 HR',
-    });
+    };
+    
+    // Reset inputs to default values
+    setInputs(defaultInputs);
 
     // Reset results
     setResults({
@@ -296,7 +299,7 @@ const ROCalculator = () => {
       },
     });
 
-    // Reset membrane selection
+    // Reset membrane selection to match the default element type
     setSelectedMembrane(membraneSpecs.swro[1]);
 
     // Clear charts
@@ -320,6 +323,16 @@ const ROCalculator = () => {
     // Reset iteration count and convergence status
     setIterationCount(0);
     setConvergenceStatus('');
+    
+    // Ensure the form fields are updated with default values
+    setTimeout(() => {
+      const formElements = document.querySelectorAll('input[type="number"]');
+      formElements.forEach((el: any) => {
+        if (el.name && defaultInputs[el.name] !== undefined) {
+          el.value = defaultInputs[el.name];
+        }
+      });
+    }, 0);
   };
   const calculatePolarization = (averageElementRecovery: number) => {
     return Math.exp(0.7 * averageElementRecovery); // Updated calculation based on average element recovery
@@ -1444,7 +1457,7 @@ const ROCalculator = () => {
                     <td className="px-3 py-2 whitespace-nowrap text-sm">{el.vessel}</td>
                     <td className="px-3 py-2 whitespace-nowrap text-sm">{el.element}</td>
                     <td className="px-3 py-2 whitespace-nowrap text-sm">{el.feedFlow}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-sm">{el.feedPressure || '-'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm">{el.feedPressure ? el.feedPressure.toFixed(1) : '-'}</td>
                     <td className="px-3 py-2 whitespace-nowrap text-sm">{el.feedTDS}</td>
                     <td className="px-3 py-2 whitespace-nowrap text-sm">{el.recovery}</td>
                     <td className="px-3 py-2 whitespace-nowrap text-sm">{(el.flux * GPD_FT2_TO_LMH).toFixed(1) || '-'}</td>
