@@ -22,6 +22,9 @@ const ROCalculator = () => {
     recoveryTarget: 75, // Target recovery percentage
     iterationLimit: 50, // Maximum iterations for solver
     convergenceTolerance: 0.001, // Convergence tolerance
+    recyclePercent: 0, // Recycle percentage
+    flowFactor: 0.85, // Flow factor for membrane
+    elementType: 'ZEKINDO SW-400 HR', // Default element type
   });
 
   const inputLabels = {
@@ -234,6 +237,12 @@ const ROCalculator = () => {
       foulingFactor: 0.8,
       feedTDS: 32000,
       saltRejection: 0.998,
+      recoveryTarget: 75,
+      iterationLimit: 50,
+      convergenceTolerance: 0.001,
+      recyclePercent: 0,
+      flowFactor: 0.85,
+      elementType: 'ZEKINDO SW-400 HR',
     });
 
     // Reset results
@@ -254,7 +263,7 @@ const ROCalculator = () => {
     });
 
     // Reset membrane selection
-    setSelectedMembrane(membraneSpecs.bwro[0]);
+    setSelectedMembrane(membraneSpecs.swro[1]);
 
     // Clear charts
     const ctxConc = document.getElementById(
@@ -273,6 +282,10 @@ const ROCalculator = () => {
       const pressChart = Chart.getChart(ctxPress);
       pressChart?.destroy();
     }
+    
+    // Reset iteration count and convergence status
+    setIterationCount(0);
+    setConvergenceStatus('');
   };
   const calculatePolarization = (averageElementRecovery: number) => {
     return Math.exp(0.7 * averageElementRecovery); // Updated calculation based on average element recovery
@@ -440,7 +453,7 @@ const ROCalculator = () => {
   };
 
   const [selectedMembrane, setSelectedMembrane] = useState(
-    membraneSpecs.bwro[0],
+    membraneSpecs.swro[1],
   );
 
   const calculate = () => {
@@ -449,7 +462,7 @@ const ROCalculator = () => {
       setConvergenceStatus('Calculating...');
       
       // Get element type from selected membrane
-      const elementType = selectedMembrane.model;
+      const elementType = inputs.elementType || selectedMembrane.model;
       const selectedMembraneProp = membraneProperties[elementType] || {
         area: inputs.elementArea,
         waterPermeability: 0.1,
@@ -463,14 +476,17 @@ const ROCalculator = () => {
         inputs.temperature
       );
       const foulingFactor = inputs.foulingFactor;
+      const flowFactor = inputs.flowFactor;
       
       // Calculate total elements in system
       let totalElements = 0;
       let totalVessels = 0;
+      let pvPerStage = [];
 
       // Loop through each stage to calculate total elements and vessels
       for (let i = 0; i < inputs.stages; i++) {
         const vesselsInStage = inputs.stageVessels[i] || 0;
+        pvPerStage.push(vesselsInStage);
         totalVessels += vesselsInStage;
 
         // Add up all elements in this stage
@@ -498,7 +514,7 @@ const ROCalculator = () => {
         feedPressure = inputs.feedPressure;
       }
       
-      // Initial increment for binary search - make smaller for more precision
+      // Initial increment for binary search
       let pressureIncrement = feedPressure / 4;
       
       // Binary search algorithm to find the right feed pressure
@@ -510,8 +526,8 @@ const ROCalculator = () => {
       let bestElementResults: any[] = [];
       let bestDifference = 1.0; // Initialize to 100% difference
       
-      // Ensure we run at least 5 iterations to refine the pressure
       const minIterations = 5;
+      const recyclePercent = inputs.recyclePercent / 100;
       
       while ((iterations < inputs.iterationLimit && !converged) || iterations < minIterations) {
         iterations++;
@@ -521,12 +537,26 @@ const ROCalculator = () => {
           converged = false;
         }
         
-        // Create array of element objects
+        // Create element array for simulation
         const elements: any[] = [];
+        
+        // Calculate effective feed flow including recycle
+        let effectiveFeedFlow = inputs.feedFlow;
+        if (recyclePercent > 0) {
+          // Estimate recycle flow based on target recovery and recycle percentage
+          // Initially guess the recycle flow
+          const estimatedPermeateFlow = inputs.feedFlow * targetRecovery;
+          effectiveFeedFlow = inputs.feedFlow + (estimatedPermeateFlow * recyclePercent);
+        }
+        
+        // Set up elements 2D array structure - first by stage, then by PV
+        const elementsByStage = [];
         for (let stage = 0; stage < inputs.stages; stage++) {
+          const stageElements = [];
           for (let pv = 0; pv < inputs.stageVessels[stage]; pv++) {
+            const pvElements = [];
             for (let el = 0; el < (inputs.vesselElements[stage]?.[pv] || 0); el++) {
-              elements.push({
+              const elementObj = {
                 stage: stage + 1,
                 vessel: pv + 1,
                 element: el + 1,
@@ -541,127 +571,165 @@ const ROCalculator = () => {
                 ndp: 0,
                 osmoticPressure: 0,
                 polarization: 0
-              });
+              };
+              pvElements.push(elementObj);
+              elements.push(elementObj);
             }
+            stageElements.push(pvElements);
           }
+          elementsByStage.push(stageElements);
         }
-
-        // Initial flow distribution to elements
-        // Calculate initial feed flow to each PV in first stage
-        const totalPVsFirstStage = inputs.stageVessels[0];
-        const feedFlowPerPVGpm = (inputs.feedFlow * M3H_TO_GPM) / totalPVsFirstStage;
         
-        // Initialize stage feed values
-        let currentStageFlow = inputs.feedFlow;
-        let currentStageTDS = inputs.feedTDS;
-        let currentStagePressure = feedPressure;
+        // Initialize stage variables for simulation
+        let stageFeeds = []; // Feed flows to each stage
+        let stageTDS = []; // TDS to each stage
+        let stagePressures = []; // Pressures to each stage
+        
+        // Initialize first stage
+        stageFeeds[0] = effectiveFeedFlow;
+        stageTDS[0] = inputs.feedTDS;
+        stagePressures[0] = feedPressure;
+        
+        // Simulate system stage by stage
         let totalPermeateFlow = 0;
+        let totalPermeateFlowWithoutRecycle = 0;
         let weightedPermeateTDS = 0;
         
-        // Process elements stage by stage
-        for (let stage = 0; stage < inputs.stages; stage++) {
-          // Calculate feed per PV in this stage
-          const pvCount = inputs.stageVessels[stage];
-          const feedFlowPerPV = currentStageFlow / pvCount;
+        for (let stageIdx = 0; stageIdx < inputs.stages; stageIdx++) {
+          const stageFeed = stageFeeds[stageIdx];
+          const stageFeedTDS = stageTDS[stageIdx];
+          const stageFeedPressure = stagePressures[stageIdx];
           
-          // Track total permeate flow from this stage
+          // Calculate feed per PV
+          const pvCount = pvPerStage[stageIdx];
+          if (pvCount <= 0) continue;
+          
+          const feedPerPV = stageFeed / pvCount;
+          
+          // Stage tracking variables
           let stagePermeateFlow = 0;
+          let stageConcentrateFlow = 0;
+          let stageConcentrateTDS = 0;
+          let stageOutPressure = stageFeedPressure;
           
           // Process each PV in this stage
-          for (let pv = 0; pv < pvCount; pv++) {
-            // Initialize values for this PV
-            let currentPVFeedFlow = feedFlowPerPV;
-            let currentPVFeedTDS = currentStageTDS;
-            let currentPVFeedPressure = currentStagePressure;
+          for (let pvIdx = 0; pvIdx < pvCount; pvIdx++) {
+            // Initialize PV-level variables
+            let pvFeedFlow = feedPerPV;
+            let pvFeedTDS = stageFeedTDS;
+            let pvFeedPressure = stageFeedPressure;
             
-            // Process each element in this PV
-            for (let el = 0; el < (inputs.vesselElements[stage]?.[pv] || 0); el++) {
-              // Get element index in the flat array
-              const elementIndex = elements.findIndex(e => 
-                e.stage === stage + 1 && 
-                e.vessel === pv + 1 && 
-                e.element === el + 1
-              );
+            let pvPermeateFlow = 0;
+            let pvWeightedPermeateTDS = 0;
+            
+            const pvElementCount = inputs.vesselElements[stageIdx]?.[pvIdx] || 0;
+            if (pvElementCount <= 0) continue;
+            
+            // Process each element in sequence
+            for (let elIdx = 0; elIdx < pvElementCount; elIdx++) {
+              const element = elementsByStage[stageIdx][pvIdx][elIdx];
               
-              if (elementIndex === -1) continue; // Skip if element not found
-              
-              // Set feed conditions
-              elements[elementIndex].feedFlow = currentPVFeedFlow;
-              elements[elementIndex].feedPressure = currentPVFeedPressure;
-              elements[elementIndex].feedTDS = currentPVFeedTDS;
+              // Set feed conditions for this element
+              element.feedFlow = pvFeedFlow;
+              element.feedTDS = pvFeedTDS;
+              element.feedPressure = pvFeedPressure;
               
               // Calculate osmotic pressure
-              const feedOsmoticPressure = calculateOsmoticPressure(currentPVFeedTDS, inputs.temperature);
-              elements[elementIndex].osmoticPressure = feedOsmoticPressure;
+              const feedOsmoticPressure = calculateOsmoticPressure(pvFeedTDS, inputs.temperature);
+              element.osmoticPressure = feedOsmoticPressure;
               
-              // Calculate initial recovery guess for this element
-              // Use a simple model based on remaining elements
+              // Calculate concentration polarization
+              // For the first iteration, use an estimate based on target recovery
               const averageElementRecovery = 1 - Math.pow(1 - targetRecovery, 1/totalElements);
+              const polarizationFactor = calculatePolarizationFactor(
+                element.recovery > 0 ? element.recovery : averageElementRecovery
+              );
+              element.polarization = polarizationFactor;
+              
+              // Calculate effective osmotic pressure with CP
+              const effectiveOsmoticPressure = feedOsmoticPressure * polarizationFactor;
               
               // Calculate net driving pressure
-              const polarizationFactor = calculatePolarizationFactor(averageElementRecovery);
-              elements[elementIndex].polarization = polarizationFactor;
+              const ndp = Math.max(0, pvFeedPressure - effectiveOsmoticPressure - inputs.permatePressure);
+              element.ndp = ndp;
               
-              const effectiveOsmoticPressure = feedOsmoticPressure * polarizationFactor;
-              const ndp = Math.max(0, currentPVFeedPressure - effectiveOsmoticPressure - inputs.permatePressure);
-              elements[elementIndex].ndp = ndp;
-              
-              // Calculate flux based on NDP and membrane properties
+              // Calculate water flux through membrane
               const flux = calculateFlux(ndp, selectedMembraneProp.waterPermeability, tcf, foulingFactor);
-              elements[elementIndex].flux = flux;
+              element.flux = flux;
               
               // Calculate permeate flow based on flux and membrane area
-              const permeateFlowGpd = flux * selectedMembraneProp.area;
+              const permeateFlowGpd = flux * selectedMembraneProp.area * flowFactor;
               const permeateFlowM3h = permeateFlowGpd * GPD_TO_M3H;
-              elements[elementIndex].permeateFlow = permeateFlowM3h;
+              element.permeateFlow = permeateFlowM3h;
               
               // Calculate recovery for this element
-              const elementRecovery = Math.min(0.3, permeateFlowM3h / currentPVFeedFlow); // Cap at 30% per element
-              elements[elementIndex].recovery = elementRecovery;
+              const elementRecovery = Math.min(0.2, permeateFlowM3h / pvFeedFlow); // Cap at 20% per element for safety
+              element.recovery = elementRecovery;
               
               // Calculate concentrate flow
-              const concentrateFlowM3h = currentPVFeedFlow - permeateFlowM3h;
-              elements[elementIndex].concentrateFlow = concentrateFlowM3h;
+              const concentrateFlowM3h = pvFeedFlow - permeateFlowM3h;
+              element.concentrateFlow = concentrateFlowM3h;
               
               // Calculate concentrate TDS
-              const concentrateTDS = currentPVFeedTDS / (1 - elementRecovery);
+              const concentrateTDS = elementRecovery > 0 ? 
+                  pvFeedTDS / (1 - elementRecovery) : pvFeedTDS;
               
               // Calculate permeate TDS
               const permeateTDS = calculatePermeateTDS(
-                currentPVFeedTDS, 
+                pvFeedTDS, 
                 selectedMembraneProp.rejectionNominal, 
                 flux, 
                 selectedMembraneProp.saltPermeability,
                 tcf
               );
-              elements[elementIndex].permeateTDS = permeateTDS;
+              element.permeateTDS = permeateTDS;
               
-              // Add to total permeate tracking
-              totalPermeateFlow += permeateFlowM3h;
-              weightedPermeateTDS += permeateFlowM3h * permeateTDS;
-              stagePermeateFlow += permeateFlowM3h;
+              // Add to permeate tracking for this PV
+              pvPermeateFlow += permeateFlowM3h;
+              pvWeightedPermeateTDS += permeateFlowM3h * permeateTDS;
               
-              // Calculate pressure drop
-              const pressureDrop = calculateElementPressureDrop(currentPVFeedFlow);
+              // Calculate pressure drop through the element
+              const pressureDrop = calculateElementPressureDrop(pvFeedFlow);
               
-              // Update feed values for next element
-              currentPVFeedFlow = concentrateFlowM3h;
-              currentPVFeedTDS = concentrateTDS;
-              currentPVFeedPressure = Math.max(0, currentPVFeedPressure - pressureDrop);
+              // Set up feed conditions for next element in PV
+              pvFeedFlow = concentrateFlowM3h;
+              pvFeedTDS = concentrateTDS;
+              pvFeedPressure = Math.max(0, pvFeedPressure - pressureDrop);
+              
+              // Update lowest pressure in stage if needed
+              stageOutPressure = Math.min(stageOutPressure, pvFeedPressure);
             }
+            
+            // Add PV results to stage totals
+            stagePermeateFlow += pvPermeateFlow;
+            stageConcentrateFlow += pvFeedFlow; // Last element's concentrate flow
+            
+            // Weighted average of concentrate TDS from all PVs
+            stageConcentrateTDS += pvFeedFlow * pvFeedTDS;
+            
+            // Add to total permeate tracking
+            totalPermeateFlow += pvPermeateFlow;
+            weightedPermeateTDS += pvWeightedPermeateTDS;
           }
           
-          // Calculate stage average values for next stage
-          if (stage < inputs.stages - 1) {
-            const stageConcFlow = currentStageFlow - stagePermeateFlow;
-            const stageConcTDS = currentStageTDS * currentStageFlow / stageConcFlow;
-            
-            // Set values for next stage
-            currentStageFlow = stageConcFlow;
-            currentStageTDS = stageConcTDS;
-            // Assume a small interstage pressure drop
-            currentStagePressure = Math.max(0, currentStagePressure - 5);
+          // Finalize stage concentrate TDS as weighted average
+          if (stageConcentrateFlow > 0) {
+            stageConcentrateTDS /= stageConcentrateFlow;
           }
+          
+          // Set up feed for next stage if there is one
+          if (stageIdx < inputs.stages - 1) {
+            stageFeeds[stageIdx + 1] = stageConcentrateFlow;
+            stageTDS[stageIdx + 1] = stageConcentrateTDS;
+            stagePressures[stageIdx + 1] = Math.max(0, stageOutPressure - 5); // Assume 5 psi interstage drop
+          }
+        }
+        
+        // If recycle is used, adjust total permeate flow
+        totalPermeateFlowWithoutRecycle = totalPermeateFlow;
+        if (recyclePercent > 0) {
+          // When recycling, the net permeate is reduced
+          totalPermeateFlow = totalPermeateFlow / (1 + recyclePercent);
         }
         
         // Calculate system recovery
@@ -672,18 +740,20 @@ const ROCalculator = () => {
         if (recoveryDifference < bestDifference) {
           bestDifference = recoveryDifference;
           bestFeedPressure = feedPressure;
+          bestElementResults = [...elements];
+          
+          // Calculate weighted average permeate TDS
+          const avgPermeateTDS = weightedPermeateTDS / totalPermeateFlowWithoutRecycle;
+          
           bestResults = {
             feedFlow: inputs.feedFlow,
             feedTDS: inputs.feedTDS,
             feedPressure,
             permeateFlow: totalPermeateFlow,
-            permeateTDS: weightedPermeateTDS / totalPermeateFlow,
+            permeateTDS: avgPermeateTDS,
             recovery: actualRecovery * 100,
-            // Calculate average flux
-            averageFlux: totalPermeateFlow / (totalElements * selectedMembraneProp.area * FT2_TO_M2),
-            // Simplification of average NDP
+            averageFlux: totalPermeateFlow / (totalElements * selectedMembraneProp.area * FT2_TO_M2) / (1 - recyclePercent),
             averageNDP: feedPressure - initialFeedOsmoticPressure * calculatePolarizationFactor(actualRecovery / 2),
-            // Additional fields to maintain compatibility
             limitingRecovery: Math.min(85, actualRecovery * 100 + 5),
             averageElementRecovery: (1 - Math.pow(1 - actualRecovery, 1 / totalElements)) * 100,
             concentratePolarization: calculatePolarizationFactor(actualRecovery / totalElements),
@@ -691,10 +761,9 @@ const ROCalculator = () => {
             pressureDrops: [calculateElementPressureDrop(inputs.feedFlow), calculateElementPressureDrop(inputs.feedFlow * 0.7)],
             feedOsmoticPressure: initialFeedOsmoticPressure
           };
-          bestElementResults = [...elements];
         }
         
-        // Check for convergence - convert tolerance to absolute percentage points
+        // Check for convergence
         const toleranceInPercentagePoints = inputs.convergenceTolerance;
         if (recoveryDifference * 100 < toleranceInPercentagePoints && iterations >= minIterations) {
           converged = true;
@@ -709,7 +778,7 @@ const ROCalculator = () => {
             feedPressure -= pressureIncrement;
           }
           
-          // Reduce the increment for next iteration, but not too quickly
+          // Reduce the increment for next iteration
           pressureIncrement /= 1.2;
           
           // Ensure pressure increment doesn't get too small too quickly
@@ -1077,16 +1146,20 @@ const ROCalculator = () => {
               "feedTDS",
               "saltRejection",
               "recoveryTarget",
+              "recyclePercent",
+              "flowFactor",
             ].map((key) => (
               <div key={key} className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">
                   {inputLabels[key]?.label || 
-                    (key === "recoveryTarget" ? "Target Recovery" : key)}
+                    (key === "recoveryTarget" ? "Target Recovery" : 
+                     key === "recyclePercent" ? "Recycle Percent" :
+                     key === "flowFactor" ? "Flow Factor" : key)}
                   {inputLabels[key]?.unit || 
-                    (key === "recoveryTarget" ? "%" : "") && (
+                    (key === "recoveryTarget" || key === "recyclePercent" ? "%" : "") && (
                     <span className="text-gray-500 ml-1">
                       ({inputLabels[key]?.unit || 
-                    (key === "recoveryTarget" ? "%" : "")})
+                    (key === "recoveryTarget" || key === "recyclePercent" ? "%" : "")})
                     </span>
                   )}
                 </label>
@@ -1097,6 +1170,8 @@ const ROCalculator = () => {
                   onChange={handleInputChange}
                   className="w-full p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500"
                   step="any"
+                  min={key === "flowFactor" ? "0" : key === "recyclePercent" ? "0" : undefined}
+                  max={key === "flowFactor" ? "1" : key === "recyclePercent" ? "100" : undefined}
                 />
               </div>
             ))}
