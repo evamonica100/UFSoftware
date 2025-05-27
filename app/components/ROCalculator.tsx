@@ -446,14 +446,6 @@ const calculateAverageElementRecovery = (systemRecovery, totalElements) => {
     return (A * area * TCF * FF * netDrivingPressure * elements) / 24; // Convert to m³/h
   };
 
-  // Updated calculation for average element recovery using the formula: 1 - (1-Y)^(1/n)
-  const calculateAverageElementRecovery = (
-    systemRecovery: number,
-    elements: number,
-  ) => {
-    return 1 - Math.pow(1 - systemRecovery, 1 / elements);
-  };
-
   useEffect(() => {
     let concentrationChart: Chart | null = null;
     let pressureChart: Chart | null = null;
