@@ -21,25 +21,37 @@ const [inputs, setInputs] = useState({
   recyclePercent: 0,
   flowFactor: 0.85,
   elementType: 'ZEKINDO SW-400 HR',
-  // ADD THIS NEW SECTION:
-  waterAnalysis: {
-    cations: {
-      sodium: 10750,      // Default seawater values
-      calcium: 410,
-      magnesium: 1290,
-      potassium: 380,
-    },
-    anions: {
-      chloride: 19350,
-      sulfate: 2710,
-      bicarbonate: 145,
-      carbonate: 0,
-    },
-    neutrals: {
-      silica: 0,
-      boron: 4.5,
-    }
+// ADDITION 4: Option for uniform elements per vessel
+useUniformElements: true,
+elementsPerVessel: 7,
+
+// ADDITION 6: Enhanced water analysis with additional ions
+waterAnalysis: {
+  cations: {
+    sodium: 10750,
+    calcium: 410,
+    magnesium: 1290,
+    potassium: 380,
+    ammonium: 0,        // NH4+ (NEW)
+    strontium: 0,       // Sr2+ (NEW)
+    barium: 0,          // Ba2+ (NEW)
+  },
+  anions: {
+    chloride: 19350,
+    sulfate: 2710,
+    bicarbonate: 145,
+    carbonate: 0,
+    fluoride: 0,        // F- (NEW)
+    nitrate: 0,         // NO3- (NEW)
+    phosphate: 0,       // PO4 3- (NEW)
+    bromide: 65,        // Br- (NEW)
+  },
+  neutrals: {
+    silica: 0,
+    boron: 4.5,
+    carbonDioxide: 0,   // CO2 (NEW)
   }
+}
 });
 
   const inputLabels = {
@@ -165,42 +177,42 @@ const [inputs, setInputs] = useState({
   maxFeedFlowRate: 16,
   maxPressureDrop: 15
 },
-    'ZEKINDO SW-440 HR': {
-      area: 440, // ft²
-      waterPermeability: 0.0212, // gfd/psi
-      saltPermeability: 0.000035, // gfd
-      rejectionNominal: 0.997, // fraction
-      maxFlux: 16, // gfd
-      maxFeedFlowRate: 16, // gpm
-      maxPressureDrop: 15 // psi
-    },
-    'ZEKINDO SW-4040 HRLE': {
-      area: 82, // ft²
-      waterPermeability: 0.0222, // gfd/psi
-      saltPermeability: 0.000045, // gfd
-      rejectionNominal: 0.996, // fraction
-      maxFlux: 16, // gfd
-      maxFeedFlowRate: 16, // gpm
-      maxPressureDrop: 15 // psi
-    },
-    'ZEKINDO SW-400 HRLE': {
-      area: 400, // ft²
-      waterPermeability: 0.0234, // gfd/psi
-      saltPermeability: 0.000035, // gfd
-      rejectionNominal: 0.997, // fraction
-      maxFlux: 16, // gfd
-      maxFeedFlowRate: 16, // gpm
-      maxPressureDrop: 15 // psi
-    },
-    'ZEKINDO SW-440 HRLE': {
-      area: 440, // ft²
-      waterPermeability: 0.0232, // gfd/psi
-      saltPermeability: 0.000035, // gfd
-      rejectionNominal: 0.997, // fraction
-      maxFlux: 16, // gfd
-      maxFeedFlowRate: 16, // gpm
-      maxPressureDrop: 15 // psi
-    }
+'ZEKINDO SW-440 HR': {
+  area: 440,
+  waterPermeability: 0.0224,  // FIXED: Calculated from specs
+  saltPermeability: 0.0511,   // FIXED: Calculated from specs
+  rejectionNominal: 0.997,
+  maxFlux: 16,
+  maxFeedFlowRate: 16,
+  maxPressureDrop: 15
+},
+'ZEKINDO SW-4040 HRLE': {
+  area: 82,
+  waterPermeability: 0.0232,  // FIXED: Calculated from specs
+  saltPermeability: 0.0531,   // FIXED: Calculated from specs
+  rejectionNominal: 0.996,
+  maxFlux: 16,
+  maxFeedFlowRate: 16,
+  maxPressureDrop: 15
+},
+'ZEKINDO SW-400 HRLE': {
+  area: 400,
+  waterPermeability: 0.0246,  // FIXED: Calculated from specs
+  saltPermeability: 0.0563,   // FIXED: Calculated from specs
+  rejectionNominal: 0.997,
+  maxFlux: 16,
+  maxFeedFlowRate: 16,
+  maxPressureDrop: 15
+},
+'ZEKINDO SW-440 HRLE': {
+  area: 440,
+  waterPermeability: 0.0245,  // FIXED: Calculated from specs
+  saltPermeability: 0.0558,   // FIXED: Calculated from specs
+  rejectionNominal: 0.997,
+  maxFlux: 16,
+  maxFeedFlowRate: 16,
+  maxPressureDrop: 15
+}
   };
 
   const resultLabels = {
@@ -236,17 +248,26 @@ const [inputs, setInputs] = useState({
 
 // Calculate feedwater osmotic pressure using ion-specific approach
 const calculateOsmoticPressure = (waterAnalysis, temperature) => {
-  // Molecular weights (g/mol) for each ion
-  const ionData = {
-    sodium: { mw: 22.99 },
-    calcium: { mw: 40.08 },
-    magnesium: { mw: 24.31 },
-    potassium: { mw: 39.10 },
-    chloride: { mw: 35.45 },
-    sulfate: { mw: 96.06 },
-    bicarbonate: { mw: 61.02 },
-    carbonate: { mw: 60.01 }
-  };
+  // ADDITION 6: Updated molecular weights including new ions
+const ionData = {
+  // Cations
+  sodium: { mw: 22.99 },
+  calcium: { mw: 40.08 },
+  magnesium: { mw: 24.31 },
+  potassium: { mw: 39.10 },
+  ammonium: { mw: 18.04 },      // NH4+ (NEW)
+  strontium: { mw: 87.62 },     // Sr2+ (NEW)
+  barium: { mw: 137.33 },       // Ba2+ (NEW)
+  // Anions
+  chloride: { mw: 35.45 },
+  sulfate: { mw: 96.06 },
+  bicarbonate: { mw: 61.02 },
+  carbonate: { mw: 60.01 },
+  fluoride: { mw: 18.998 },     // F- (NEW)
+  nitrate: { mw: 62.004 },      // NO3- (NEW)
+  phosphate: { mw: 94.97 },     // PO4 3- (NEW)
+  bromide: { mw: 79.904 }       // Br- (NEW)
+};
   
   let totalMolality = 0;
   
@@ -294,18 +315,26 @@ const calculateOsmoticPressure = (waterAnalysis, temperature) => {
     return waterPermeability * ndp * tcf * ff;
   };
 
-// Calculate permeate TDS based on feed TDS, rejection, and flux
-const calculatePermeateTDS = (feedTDS, elementRejection, flux, saltPermeability, tcf) => {
-  // Apply temperature correction to salt permeability
-  const effectiveSaltPermeability = saltPermeability * tcf;
+// REVISION 2: Updated permeate TDS calculation using attachment formula
+const calculatePermeateTDS = (feedTDS, elementRejection, flux, saltPermeability, tcf, elementArea = null, permeateFlow = null, concentrateTDS = null, polarizationFactor = null) => {
+  // Use the more accurate formula from attachment if all parameters available
+  if (concentrateTDS && elementArea && permeateFlow && polarizationFactor) {
+    return calculatePermeateConcentration(
+      saltPermeability,
+      concentrateTDS,      // Use concentrate concentration instead of feed
+      polarizationFactor,
+      tcf,
+      elementArea,
+      permeateFlow
+    );
+  }
   
-  // Avoid division by zero
-  if (flux <= 0) return feedTDS * 0.1; // Fallback
+  // Fallback to improved simple method with temperature correction for salt
+  const effectiveSaltPermeability = saltPermeability * tcf; // Temperature correction for salt
   
-  // Salt passage = Salt flux / Water flux
+  if (flux <= 0) return feedTDS * 0.1; // Safety check
+  
   const saltPassage = effectiveSaltPermeability / flux;
-  
-  // Effective rejection considering salt passage
   const effectiveRejection = Math.max(0, Math.min(elementRejection, 1 - saltPassage));
   
   return feedTDS * (1 - effectiveRejection);
@@ -334,6 +363,31 @@ const calculateAverageElementRecovery = (systemRecovery, totalElements) => {
   if (totalElements <= 0) return 0;
   return 1 - Math.pow(1 - systemRecovery, 1 / totalElements);
 };
+  // ADDITION 1: Calculate average permeate-side osmotic pressure 
+// Formula from attachment: π̄pf = πfi(1 - Ri)
+const calculatePermeateOsmoticPressure = (feedOsmoticPressure, elementRejection) => {
+  return feedOsmoticPressure * (1 - elementRejection);
+};
+
+// ADDITION 2: Calculate permeate concentration using formula from attachment
+// Formula: Cpj = B(Ccj)(pfj)(TCF) * Se/Qv
+const calculatePermeateConcentration = (
+  saltPermeability,      // B coefficient
+  concentrateConc,       // Ccj (concentrate concentration)  
+  polarizationFactor,    // pfj
+  tcf,                   // Temperature correction factor
+  elementArea,           // Se (membrane surface area)
+  permeateFlow          // Qv (permeate flow)
+) => {
+  // Convert units: permeateFlow from m³/h to gpd for consistency
+  const permeateFlowGpd = permeateFlow * M3H_TO_GPD;
+  
+  // Apply the formula: Cpj = B * Ccj * pfj * TCF * Se / Qv
+  if (permeateFlowGpd <= 0) return concentrateConc * 0.1; // Safety fallback
+  
+  const saltFlux = saltPermeability * concentrateConc * polarizationFactor * tcf * elementArea;
+  return saltFlux / permeateFlowGpd;
+};
   
   const resetCalculator = () => {
     // Reset inputs to empty values
@@ -351,11 +405,15 @@ const calculateAverageElementRecovery = (systemRecovery, totalElements) => {
       recyclePercent: 0,
       flowFactor: 0,
       elementType: '',
-       waterAnalysis: {
-      cations: { sodium: 0, calcium: 0, magnesium: 0, potassium: 0 },
-      anions: { chloride: 0, sulfate: 0, bicarbonate: 0, carbonate: 0 },
-      neutrals: { silica: 0, boron: 0 }
-    }
+// ADDITION 4: Add uniform elements option to reset
+useUniformElements: true,
+elementsPerVessel: 7,
+// ADDITION 6: Updated water analysis with new ions
+waterAnalysis: {
+  cations: { sodium: 0, calcium: 0, magnesium: 0, potassium: 0, ammonium: 0, strontium: 0, barium: 0 },
+  anions: { chloride: 0, sulfate: 0, bicarbonate: 0, carbonate: 0, fluoride: 0, nitrate: 0, phosphate: 0, bromide: 0 },
+  neutrals: { silica: 0, boron: 0, carbonDioxide: 0 }
+}
     });
 
     // Reset results
@@ -752,7 +810,12 @@ const feedOsmoticPressure = initialFeedOsmoticPressure * concentrationRatio;
               const permatePressure = 14.7; // psi (atmospheric pressure)
               
               // Calculate net driving pressure
-              const ndp = Math.max(0, pvFeedPressure - effectiveOsmoticPressure - permatePressure);
+             // REVISION 1: Enhanced NDP calculation with permeate-side osmotic pressure
+const permatePressure = 14.7; // Atmospheric pressure
+const permeateOsmoticPressure = calculatePermeateOsmoticPressure(feedOsmoticPressure, selectedMembraneProp.rejectionNominal);
+
+// NDP = Feed Pressure - Feed Osmotic Pressure - Permeate Pressure - Permeate Osmotic Pressure
+const ndp = Math.max(0, pvFeedPressure - effectiveOsmoticPressure - permatePressure - permeateOsmoticPressure);
               element.ndp = ndp;
               
               // Calculate water flux through membrane
@@ -777,13 +840,18 @@ const feedOsmoticPressure = initialFeedOsmoticPressure * concentrationRatio;
                   pvFeedTDS / (1 - elementRecovery) : pvFeedTDS;
               
               // Calculate permeate TDS
-              const permeateTDS = calculatePermeateTDS(
-                pvFeedTDS, 
-                selectedMembraneProp.rejectionNominal, 
-                flux, 
-                selectedMembraneProp.saltPermeability,
-                tcf
-              );
+      // REVISION 2: Use enhanced permeate TDS calculation with attachment formula
+const permeateTDS = calculatePermeateTDS(
+  pvFeedTDS, 
+  selectedMembraneProp.rejectionNominal, 
+  flux, 
+  selectedMembraneProp.saltPermeability,
+  tcf,
+  selectedMembraneProp.area,        // Element area
+  permeateFlowM3h,                  // Permeate flow
+  concentrateTDS,                   // Concentrate TDS
+  polarizationFactor               // Polarization factor
+);
               element.permeateTDS = permeateTDS;
               
               // Add to permeate tracking for this PV
@@ -1064,66 +1132,6 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
         RO System Design Calculator
       </h2>
 
-      {/* Membrane Specifications Section */}
-      <div className="bg-gray-50 p-6 rounded-lg mb-8">
-        <h3 className="text-lg font-semibold text-blue-700 mb-4">
-          Zekindo Membrane Specifications
-        </h3>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                  Model
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                  Area (ft²)
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                  Nominal Rejection (%)
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                  Max Flux (GFD)
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                  Max Feed Flow (GPM)
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {Object.keys(membraneProperties).filter(model => 
-                model.includes(selectedMembrane.type === "SW" ? "SW" : "BW")
-              ).map((model) => {
-                const membrane = membraneProperties[model];
-                return (
-                  <tr key={model}>
-                    <td className="px-4 py-2">{model}</td>
-                    <td className="px-4 py-2">{membrane.area}</td>
-                    <td className="px-4 py-2">{(membrane.rejectionNominal * 100).toFixed(2)}</td>
-                    <td className="px-4 py-2">{membrane.maxFlux}</td>
-                    <td className="px-4 py-2">{membrane.maxFeedFlowRate}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <div className="mt-4">
-          <select
-            className="w-full p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500"
-            onChange={(e) => {
-              const type = e.target.value;
-              const specs =
-                type === "swro" ? membraneSpecs.swro : membraneSpecs.bwro;
-              setSelectedMembrane(specs[0]);
-            }}
-          >
-            <option value="bwro">Brackish Water RO (BWRO)</option>
-            <option value="swro">Sea Water RO (SWRO)</option>
-          </select>
-        </div>
-      </div>
-
       {/* Input Parameters and System Results */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-gray-50 p-6 rounded-lg">
@@ -1154,6 +1162,60 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
               />
             </div>
 
+            {/* ADDITION 4: Option for uniform elements per vessel */}
+<div className="space-y-2 mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+  <label className="flex items-center">
+    <input
+      type="checkbox"
+      checked={inputs.useUniformElements}
+      onChange={(e) => setInputs(prev => ({
+        ...prev,
+        useUniformElements: e.target.checked,
+        vesselElements: e.target.checked 
+          ? Array(prev.stages).fill(null).map((_, stageIdx) => 
+              Array(prev.stageVessels[stageIdx] || 0).fill(prev.elementsPerVessel || 7)
+            )
+          : prev.vesselElements
+      }))}
+      className="mr-2"
+    />
+    <span className="text-sm font-medium text-gray-700">
+      Use same number of elements for all vessels
+    </span>
+  </label>
+  
+  {inputs.useUniformElements && (
+    <div className="ml-6 mt-3">
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        Elements per Vessel
+      </label>
+      <input
+        type="number"
+        value={inputs.elementsPerVessel}
+        onChange={(e) => {
+          const elementsPerVessel = parseInt(e.target.value) || 7;
+          setInputs(prev => ({
+            ...prev,
+            elementsPerVessel,
+            vesselElements: Array(prev.stages).fill(null).map((_, stageIdx) => 
+              Array(prev.stageVessels[stageIdx] || 0).fill(elementsPerVessel)
+            )
+          }));
+        }}
+        className="w-full p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500"
+        min="1"
+        max="8"
+      />
+      <p className="text-xs text-gray-500 mt-1">
+        This will set the same number of elements for all vessels in all stages
+      </p>
+    </div>
+  )}
+</div>
+            
+{/* Only show detailed configuration if uniform elements is OFF */}
+{!inputs.useUniformElements && (
+  <>
             {Array.from({ length: inputs.stages }, (_, stageIndex) => (
               <div
                 key={`stage-${stageIndex}`}
@@ -1233,6 +1295,30 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
               </div>
             ))}
 
+    </>
+)}
+
+{/* Show summary when uniform elements is ON */}
+{inputs.useUniformElements && inputs.stages > 0 && (
+  <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+    <h5 className="font-medium text-green-800 mb-2">System Configuration Summary</h5>
+    <div className="text-sm text-green-700 space-y-1">
+      {inputs.stageVessels.map((vessels, stageIdx) => (
+        <div key={stageIdx} className="flex justify-between">
+          <span>Stage {stageIdx + 1}:</span>
+          <span>{vessels} vessels × {inputs.elementsPerVessel} elements = {vessels * inputs.elementsPerVessel} elements</span>
+        </div>
+      ))}
+      <div className="border-t border-green-300 pt-2 mt-2 font-medium">
+        <div className="flex justify-between">
+          <span>Total:</span>
+          <span>{inputs.stageVessels.reduce((a, b) => a + b, 0) * inputs.elementsPerVessel} elements</span>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
             {/* Other inputs */}
             {[
               "temperature",
@@ -1295,8 +1381,15 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
         {Object.keys(inputs.waterAnalysis.cations).map(ion => (
           <div key={ion}>
             <label className="block text-sm text-gray-600 capitalize">
-              {ion} ({ion === 'sodium' ? 'Na+' : ion === 'calcium' ? 'Ca2+' : 
-                     ion === 'magnesium' ? 'Mg2+' : 'K+'})
+  {ion} ({
+  ion === 'sodium' ? 'Na+' : 
+  ion === 'calcium' ? 'Ca2+' : 
+  ion === 'magnesium' ? 'Mg2+' : 
+  ion === 'potassium' ? 'K+' :
+  ion === 'ammonium' ? 'NH4+' :
+  ion === 'strontium' ? 'Sr2+' :
+  ion === 'barium' ? 'Ba2+' : ion
+})
             </label>
             <input
               type="number"
@@ -1325,8 +1418,16 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
         {Object.keys(inputs.waterAnalysis.anions).map(ion => (
           <div key={ion}>
             <label className="block text-sm text-gray-600 capitalize">
-              {ion} ({ion === 'chloride' ? 'Cl-' : ion === 'sulfate' ? 'SO4 2-' : 
-                     ion === 'bicarbonate' ? 'HCO3-' : 'CO3 2-'})
+{ion} ({
+  ion === 'chloride' ? 'Cl-' : 
+  ion === 'sulfate' ? 'SO4 2-' : 
+  ion === 'bicarbonate' ? 'HCO3-' : 
+  ion === 'carbonate' ? 'CO3 2-' :
+  ion === 'fluoride' ? 'F-' :
+  ion === 'nitrate' ? 'NO3-' :
+  ion === 'phosphate' ? 'PO4 3-' :
+  ion === 'bromide' ? 'Br-' : ion
+})
             </label>
             <input
               type="number"
@@ -1355,7 +1456,11 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
         {Object.keys(inputs.waterAnalysis.neutrals).map(compound => (
           <div key={compound}>
             <label className="block text-sm text-gray-600 capitalize">
-              {compound} ({compound === 'silica' ? 'SiO2' : 'B'})
+{compound} ({
+  compound === 'silica' ? 'SiO2' : 
+  compound === 'boron' ? 'B' :
+  compound === 'carbonDioxide' ? 'CO2' : compound
+})
             </label>
             <input
               type="number"
