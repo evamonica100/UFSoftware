@@ -811,7 +811,6 @@ const feedOsmoticPressure = initialFeedOsmoticPressure * concentrationRatio;
               
               // Calculate net driving pressure
              // REVISION 1: Enhanced NDP calculation with permeate-side osmotic pressure
-const permatePressure = 14.7; // Atmospheric pressure
 const permeateOsmoticPressure = calculatePermeateOsmoticPressure(feedOsmoticPressure, selectedMembraneProp.rejectionNominal);
 
 // NDP = Feed Pressure - Feed Osmotic Pressure - Permeate Pressure - Permeate Osmotic Pressure
