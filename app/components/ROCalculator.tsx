@@ -418,17 +418,6 @@ const calculateAverageElementRecovery = (systemRecovery, totalElements) => {
     return isFirstStage ? 20 : 15; // Simplified calculation
   };
 
-  const calculateLimitingRecovery = (
-    feedOP: number,
-    CP: number,
-    SR: number,
-    feedP: number,
-    pressureDrop: number,
-    permP: number,
-  ) => {
-    return 0.85; // Simplified calculation
-  };
-
   const calculateTotalPermeateFlow = (
     elements: number,
     A: number,
