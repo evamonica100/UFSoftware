@@ -27,12 +27,12 @@ const CleaningEvaluation = () => {
   }, []);
 
   const [tankDimensions, setTankDimensions] = useState({
-    numberOfElements: 6,
-    elementLength: 40, // inches
-    elementDiameter: 4, // inches
-    cleaningSolutionVolume: 0,
-    tankVolume: 0
-  });
+  numberOfElements: 6,
+  elementLength: 40, // inches
+  elementDiameter: 4, // inches
+  cleaningSolutionVolume: '',  // Changed to empty string
+  tankVolume: ''               // Changed to empty string
+});
 
   const calculateTankSize = () => {
     // Volume calculation for minimum cleaning solution (allowing for 20% safety factor)
