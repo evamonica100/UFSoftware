@@ -161,8 +161,8 @@ waterAnalysis: {
     // ZEKINDO Sea Water (SW) membranes
 'ZEKINDO SW-4040': {
   area: 82,
-  waterPermeability: 0.0189, // FIXED: Calculated from specs
-  saltPermeability: 0.0432,  // FIXED: Calculated from specs
+  waterPermeability: 0.0189,
+  saltPermeability: 0.00005,  // ← FIXED
   rejectionNominal: 0.996,
   maxFlux: 16,
   maxFeedFlowRate: 16,
@@ -170,8 +170,8 @@ waterAnalysis: {
 },
 'ZEKINDO SW-400 HR': {
   area: 400,
-  waterPermeability: 0.0227, // FIXED: Calculated from specs
-  saltPermeability: 0.0518,  // FIXED: Calculated from specs (1,480x higher!)
+  waterPermeability: 0.0227,
+  saltPermeability: 0.00005,  // ← FIXED
   rejectionNominal: 0.997,
   maxFlux: 16,
   maxFeedFlowRate: 16,
@@ -315,29 +315,26 @@ const ionData = {
     return waterPermeability * ndp * tcf * ff;
   };
 
-// REVISION 2: Updated permeate TDS calculation using attachment formula
+// FIXED: Simple rejection-based permeate TDS calculation
 const calculatePermeateTDS = (feedTDS, elementRejection, flux, saltPermeability, tcf, elementArea = null, permeateFlow = null, concentrateTDS = null, polarizationFactor = null) => {
-  // Use the more accurate formula from attachment if all parameters available
-  if (concentrateTDS && elementArea && permeateFlow && polarizationFactor) {
-    return calculatePermeateConcentration(
-      saltPermeability,
-      concentrateTDS,      // Use concentrate concentration instead of feed
-      polarizationFactor,
-      tcf,
-      elementArea,
-      permeateFlow
-    );
+  // Use concentrate TDS and polarization factor for more accuracy
+  if (concentrateTDS && polarizationFactor) {
+    // Effective feed TDS at membrane surface (higher due to concentration polarization)
+    const effectiveFeedTDS = concentrateTDS * polarizationFactor;
+    
+    // Simple rejection formula: Permeate TDS = Feed TDS × (1 - Rejection)
+    const permeateTDS = effectiveFeedTDS * (1 - elementRejection);
+    
+    // Apply safety limits
+    return Math.max(10, Math.min(permeateTDS, feedTDS * 0.8)); // Min 10 mg/L, max 80% of feed
   }
   
-  // Fallback to improved simple method with temperature correction for salt
-  const effectiveSaltPermeability = saltPermeability * tcf; // Temperature correction for salt
+  // Fallback method using feed TDS
+  const effectiveFeedTDS = feedTDS * (polarizationFactor || 1.0);
+  const permeateTDS = effectiveFeedTDS * (1 - elementRejection);
   
-  if (flux <= 0) return feedTDS * 0.1; // Safety check
-  
-  const saltPassage = effectiveSaltPermeability / flux;
-  const effectiveRejection = Math.max(0, Math.min(elementRejection, 1 - saltPassage));
-  
-  return feedTDS * (1 - effectiveRejection);
+  // Apply safety limits
+  return Math.max(10, Math.min(permeateTDS, feedTDS * 0.8));
 };
 
   // Calculate limiting system recovery using formula: YL = 1 - (πf × pf × R) / (Pf - ΔPfc - Pp)
@@ -369,25 +366,8 @@ const calculatePermeateOsmoticPressure = (feedOsmoticPressure, elementRejection)
   return feedOsmoticPressure * (1 - elementRejection);
 };
 
-// ADDITION 2: Calculate permeate concentration using formula from attachment
-// Formula: Cpj = B(Ccj)(pfj)(TCF) * Se/Qv
-const calculatePermeateConcentration = (
-  saltPermeability,      // B coefficient
-  concentrateConc,       // Ccj (concentrate concentration)  
-  polarizationFactor,    // pfj
-  tcf,                   // Temperature correction factor
-  elementArea,           // Se (membrane surface area)
-  permeateFlow          // Qv (permeate flow)
-) => {
-  // Convert units: permeateFlow from m³/h to gpd for consistency
-  const permeateFlowGpd = permeateFlow * M3H_TO_GPD;
-  
-  // Apply the formula: Cpj = B * Ccj * pfj * TCF * Se / Qv
-  if (permeateFlowGpd <= 0) return concentrateConc * 0.1; // Safety fallback
-  
-  const saltFlux = saltPermeability * concentrateConc * polarizationFactor * tcf * elementArea;
-  return saltFlux / permeateFlowGpd;
-};
+// REMOVED: No longer needed for simple rejection method
+// const calculatePermeateConcentration = ... (function deleted)
   
   const resetCalculator = () => {
     // Reset inputs to empty values
