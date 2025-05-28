@@ -807,7 +807,9 @@ const ndp = Math.max(0, pvFeedPressure - effectiveOsmoticPressure - permatePress
               element.permeateFlow = permeateFlowM3h;
               
               // Calculate recovery for this element
-              const elementRecovery = Math.min(0.2, permeateFlowM3h / pvFeedFlow); // Cap at 20% per element for safety
+              // FIXED: Realistic element recovery limits
+const maxElementRecovery = elementType.includes('SW') ? 0.12 : 0.15; // 12% for SW, 15% for BW
+const elementRecovery = Math.min(maxElementRecovery, permeateFlowM3h / pvFeedFlow);
               element.recovery = elementRecovery;
               
               // Calculate concentrate flow
