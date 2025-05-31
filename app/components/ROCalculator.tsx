@@ -1267,14 +1267,17 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
             feedOsmoticPressure: initialFeedOsmoticPressure
           };
           const warnings = checkScalingPotential(inputs.waterAnalysis, inputs.temperature, actualRecovery);
+        
           const calculatedChemicalDosing = calculateChemicalDosing(inputs.feedFlow, inputs.waterAnalysis, actualRecovery, inputs.temperature);
+            // COMMENT OUT ONLY THE CHEMICAL COST CALCULATIONS:
+/*
          const totalDailyChemicalCost = Object.values(calculatedChemicalDosing).reduce((sum, dosing: any) => sum + (dosing.cost || 0), 0);
           setScalingWarnings(warnings);
           setChemicalCosts(calculatedChemicalDosing);
-
+*/
           bestResults.scalingWarnings = warnings;
           bestResults.chemicalDosing = calculatedChemicalDosing;
-          bestResults.totalDailyChemicalCost = totalDailyChemicalCost;
+          // bestResults.totalDailyChemicalCost = totalDailyChemicalCost;// 
         }
         
         // Check for convergence
@@ -1452,7 +1455,7 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
             averageNDP: parseFloat(bestResults.averageNDP.toFixed(1)),
 scalingWarnings: bestResults.scalingWarnings,
     chemicalDosing: bestResults.chemicalDosing,
-    totalDailyChemicalCost: bestResults.totalDailyChemicalCost
+    // totalDailyChemicalCost: bestResults.totalDailyChemicalCost// 
           },
         });
       }
@@ -2236,27 +2239,22 @@ scalingWarnings: bestResults.scalingWarnings,
               </span>
             </div>
 
-{/* Daily Chemical Cost - SIMPLE VERSION */}
+{/* Daily Chemical Cost - STATIC */}
 <div className="p-3 bg-white rounded-md flex justify-between items-center">
   <span className="font-medium text-gray-700">Daily Chemical Cost</span>
   <span className="text-gray-900">
-    ${Object.values(chemicalCosts).length > 0 ? 
-      (Object.values(chemicalCosts).reduce((sum, cost: any) => sum + (Number(cost) || 0), 0)).toFixed(2) : 
-      '0.00'
-    } <span className="text-gray-500 ml-1">/day</span>
+    $0.00 <span className="text-gray-500 ml-1">/day</span>
   </span>
 </div>
 
-{/* Annual Chemical Cost - SIMPLE VERSION */}
+{/* Annual Chemical Cost - STATIC */}
 <div className="p-3 bg-white rounded-md flex justify-between items-center">
   <span className="font-medium text-gray-700">Annual Chemical Cost</span>
   <span className="text-gray-900">
-    ${Object.values(chemicalCosts).length > 0 ? 
-      (Object.values(chemicalCosts).reduce((sum, cost: any) => sum + (Number(cost) || 0), 0) * 365).toFixed(0) : 
-      '0'
-    } <span className="text-gray-500 ml-1">/year</span>
+    $0 <span className="text-gray-500 ml-1">/year</span>
   </span>
 </div>
+
             
             {/* Additional parameters that might be useful */}
             <details className="bg-white rounded-md p-3">
