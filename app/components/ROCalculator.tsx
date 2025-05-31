@@ -392,6 +392,7 @@ const generateScalingWarnings = (saturationRatios) => {
   const warnings = [];
   
   Object.entries(saturationRatios).forEach(([compound, ratio]) => {
+    const ratioNum = ratio as number;
     if (ratio > 1.0) {
       warnings.push({
         compound: compound,
