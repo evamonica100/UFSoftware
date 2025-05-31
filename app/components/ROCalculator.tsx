@@ -656,9 +656,8 @@ chemicalDosing: {
   const calculatePressureDrop = (flow: number, isFirstStage: boolean) => {
     return isFirstStage ? 20 : 15; // Simplified calculation
   };
-  // Add these functions before the main calculate function
-const checkScalingPotential = (waterAnalysis, temperature, recovery) => {
-  const warnings = [];
+const checkScalingPotential = (waterAnalysis: any, temperature: number, recovery: number) => {
+  const warnings: any[] = [];
   
   // LSI calculation for CaCO3 scaling
   const lsi = calculateLSI(waterAnalysis, temperature);
@@ -725,11 +724,17 @@ const checkScalingPotential = (waterAnalysis, temperature, recovery) => {
   return warnings;
 };
 
-const calculateLSI = (waterAnalysis, temperature) => {
+const calculateLSI = (waterAnalysis: any, temperature: number) => {
   // Simplified LSI calculation
   const assumedPH = 8.0; // Typical seawater pH
-const tds = Object.values(waterAnalysis.cations).reduce((a,b) => Number(a) + Number(b), 0) + 
-            Object.values(waterAnalysis.anions).reduce((a,b) => Number(a) + Number(b), 0);
+  
+  // Calculate TDS with proper type handling
+  const cationValues = Object.values(waterAnalysis.cations) as number[];
+  const anionValues = Object.values(waterAnalysis.anions) as number[];
+  
+  const cationTotal = cationValues.reduce((sum, val) => sum + (val || 0), 0);
+  const anionTotal = anionValues.reduce((sum, val) => sum + (val || 0), 0);
+  const tds = cationTotal + anionTotal;
   
   const calciumMolar = waterAnalysis.cations.calcium / 40080; // mg/L to mol/L
   const alkalinityMolar = (waterAnalysis.anions.bicarbonate + 2 * waterAnalysis.anions.carbonate) / 50000; // mg/L as CaCO3 to mol/L
@@ -742,7 +747,7 @@ const tds = Object.values(waterAnalysis.cations).reduce((a,b) => Number(a) + Num
   return assumedPH - pHs;
 };
 
-const calculateChemicalDosing = (feedFlow, waterAnalysis, recovery, temperature) => {
+const calculateChemicalDosing = (feedFlow: number, waterAnalysis: any, recovery: number, temperature: number) => {
   const dosing = JSON.parse(JSON.stringify(inputs.chemicalDosing)); // Deep copy
   const dailyFlow = feedFlow * 24; // m³/day
   
