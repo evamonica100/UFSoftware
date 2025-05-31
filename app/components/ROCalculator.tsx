@@ -120,6 +120,9 @@ chemicalDosing: {
       feedOsmoticPressure: 0,
       feedPressure: 0,
       averageNDP: 0,
+      scalingWarnings: [],
+    chemicalDosing: {},
+    totalDailyChemicalCost: 0,
     },
   });
   
@@ -613,6 +616,9 @@ chemicalDosing: {
         feedOsmoticPressure: 0,
         feedPressure: 0,
         averageNDP: 0,
+         scalingWarnings: [],
+    chemicalDosing: {},
+    totalDailyChemicalCost: 0,
       },
     });
 
