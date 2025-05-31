@@ -27,6 +27,7 @@ elementsPerVessel: 7,
 
 // ADDITION 6: Enhanced water analysis with additional ions
 waterAnalysis: {
+  pH: 7.0,
   cations: {
     sodium: 10750,
     calcium: 410,
@@ -239,7 +240,42 @@ const chemicalDatabase = {
     price: 0.10,
     molecularWeight: 36.46
   },
-  // ... rest of chemical database
+  'H2SO4': {
+    symbol: 'H2SO4',
+    name: 'Sulfuric Acid',
+    category: 'Acid',
+    concentration: 98.0,
+    density: 1.84,
+    price: 0.08,
+    molecularWeight: 98.08
+  },
+  'NaOH (30)': {
+    symbol: 'NaOH',
+    name: 'Sodium Hydroxide 30%',
+    category: 'Base',
+    concentration: 30.0,
+    density: 1.33,
+    price: 0.15,
+    molecularWeight: 40.0
+  },
+  'Na6P6O18': {
+    symbol: 'Na6P6O18',
+    name: 'Sodium Hexametaphosphate',
+    category: 'Antiscalant',
+    concentration: 100.0,
+    density: 1.0,
+    price: 2.50,
+    molecularWeight: 611.77
+  },
+  'FeCl3': {
+    symbol: 'FeCl3',
+    name: 'Ferric Chloride',
+    category: 'Coagulant',
+    concentration: 40.0,
+    density: 1.4,
+    price: 0.25,
+    molecularWeight: 162.2
+  }
 };
 
 const scalingConstants = {
@@ -392,16 +428,16 @@ const generateScalingWarnings = (saturationRatios) => {
   const warnings = [];
   
   Object.entries(saturationRatios).forEach(([compound, ratio]) => {
-    const ratioNum = ratio as number;
-    if (ratio > 1.0) {
-      warnings.push({
-        compound: compound,
-        saturation: `${(ratio * 100).toFixed(1)}%`,
-        pass: 1,
-        message: `${compound} (% saturation) > 100`
-      });
-    }
-  });
+  const ratioNum = ratio as number;
+  if (ratioNum > 1.0) {  // ← FIXED: Use ratioNum
+    warnings.push({
+      compound: compound,
+      saturation: `${(ratioNum * 100).toFixed(1)}%`,  // ← FIXED: Use ratioNum
+      pass: 1,
+      message: `${compound} (% saturation) > 100`
+    });
+  }
+});
   
   // Add general antiscalant recommendation if any scaling detected
   if (warnings.length > 0) {
