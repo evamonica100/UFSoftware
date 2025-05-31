@@ -1260,6 +1260,15 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
             pressureDrops: [calculateElementPressureDrop(inputs.feedFlow), calculateElementPressureDrop(inputs.feedFlow * 0.7)],
             feedOsmoticPressure: initialFeedOsmoticPressure
           };
+          const warnings = checkScalingPotential(inputs.waterAnalysis, inputs.temperature, actualRecovery);
+          const calculatedChemicalDosing = calculateChemicalDosing(inputs.feedFlow, inputs.waterAnalysis, actualRecovery, inputs.temperature);
+          const totalDailyChemicalCost = Object.values(calculatedChemicalDosing).reduce((sum, dosing) => sum + (dosing.cost || 0), 0);
+          setScalingWarnings(warnings);
+          setChemicalCosts(calculatedChemicalDosing);
+
+          bestResults.scalingWarnings = warnings;
+          bestResults.chemicalDosing = calculatedChemicalDosing;
+          bestResults.totalDailyChemicalCost = totalDailyChemicalCost;
         }
         
         // Check for convergence
@@ -1419,11 +1428,6 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
             },
           });
         }
-const warnings = checkScalingPotential(inputs.waterAnalysis, inputs.temperature, actualRecovery);
-const calculatedChemicalDosing = calculateChemicalDosing(inputs.feedFlow, inputs.waterAnalysis, actualRecovery, inputs.temperature);
-const totalDailyChemicalCost = Object.values(calculatedChemicalDosing).reduce((sum, dosing) => sum + (dosing.cost || 0), 0);
-setScalingWarnings(warnings);
-setChemicalCosts(calculatedChemicalDosing);
         
         setResults({
           elementResults: formattedElementResults,
@@ -1440,9 +1444,9 @@ setChemicalCosts(calculatedChemicalDosing);
             feedOsmoticPressure: parseFloat(bestResults.feedOsmoticPressure.toFixed(1)),
             feedPressure: parseFloat(bestFeedPressure.toFixed(1)),
             averageNDP: parseFloat(bestResults.averageNDP.toFixed(1)),
-             scalingWarnings: warnings,
-    chemicalDosing: calculatedChemicalDosing,
-    totalDailyChemicalCost: totalDailyChemicalCost
+scalingWarnings: bestResults.scalingWarnings,
+    chemicalDosing: bestResults.chemicalDosing,
+    totalDailyChemicalCost: bestResults.totalDailyChemicalCost
           },
         });
       }
