@@ -1271,10 +1271,10 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
           const calculatedChemicalDosing = calculateChemicalDosing(inputs.feedFlow, inputs.waterAnalysis, actualRecovery, inputs.temperature);
             // COMMENT OUT ONLY THE CHEMICAL COST CALCULATIONS:
 /*
-         const totalDailyChemicalCost = Object.values(calculatedChemicalDosing).reduce((sum, dosing: any) => sum + (dosing.cost || 0), 0);
+         const totalDailyChemicalCost = Object.values(calculatedChemicalDosing).reduce((sum, dosing: any) => sum + (dosing.cost || 0), 0);*/
           setScalingWarnings(warnings);
-          setChemicalCosts(calculatedChemicalDosing);
-*/
+       */   setChemicalCosts(calculatedChemicalDosing);*/
+
           bestResults.scalingWarnings = warnings;
           bestResults.chemicalDosing = calculatedChemicalDosing;
           // bestResults.totalDailyChemicalCost = totalDailyChemicalCost;// 
