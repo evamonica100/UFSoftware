@@ -1455,7 +1455,7 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
             averageNDP: parseFloat(bestResults.averageNDP.toFixed(1)),
 scalingWarnings: bestResults.scalingWarnings,
     chemicalDosing: bestResults.chemicalDosing,
-    // totalDailyChemicalCost: bestResults.totalDailyChemicalCost// 
+    totalDailyChemicalCost: 0,
           },
         });
       }
