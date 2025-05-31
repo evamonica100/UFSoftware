@@ -455,8 +455,8 @@ const generateScalingWarnings = (saturationRatios) => {
 // Calculate LSI using WAVE formula
 const calculateLSI = (waterAnalysis, temperature) => {
   const pH = waterAnalysis.pH;
-  const TDS = Object.values(waterAnalysis.cations).reduce((a, b) => a + b, 0) + 
-             Object.values(waterAnalysis.anions).reduce((a, b) => a + b, 0);
+  const TDS = Object.values(waterAnalysis.cations).reduce((a: number, b: unknown) => a + (Number(b) || 0), 0) + 
+             Object.values(waterAnalysis.anions).reduce((a: number, b: unknown) => a + (Number(b) || 0), 0);
   const tempK = temperature + 273.15;
   
   // WAVE formula components
