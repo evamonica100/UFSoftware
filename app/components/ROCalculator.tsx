@@ -1262,7 +1262,7 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
           };
           const warnings = checkScalingPotential(inputs.waterAnalysis, inputs.temperature, actualRecovery);
           const calculatedChemicalDosing = calculateChemicalDosing(inputs.feedFlow, inputs.waterAnalysis, actualRecovery, inputs.temperature);
-          const totalDailyChemicalCost = Object.values(calculatedChemicalDosing).reduce((sum, dosing) => sum + (dosing.cost || 0), 0);
+         const totalDailyChemicalCost = Object.values(calculatedChemicalDosing).reduce((sum, dosing: any) => sum + (dosing.cost || 0), 0);
           setScalingWarnings(warnings);
           setChemicalCosts(calculatedChemicalDosing);
 
@@ -2234,14 +2234,14 @@ scalingWarnings: bestResults.scalingWarnings,
 <div className="p-3 bg-white rounded-md flex justify-between items-center">
   <span className="font-medium text-gray-700">Daily Chemical Cost</span>
   <span className="text-gray-900">
-    ${(Object.values(chemicalCosts).reduce((sum, cost) => sum + (cost || 0), 0)).toFixed(2)} <span className="text-gray-500 ml-1">/day</span>
+    ${(Object.values(chemicalCosts).reduce((sum, cost: any) => sum + (cost || 0), 0)).toFixed(2)}<span className="text-gray-500 ml-1">/day</span>
   </span>
 </div>
 
 <div className="p-3 bg-white rounded-md flex justify-between items-center">
   <span className="font-medium text-gray-700">Annual Chemical Cost</span>
   <span className="text-gray-900">
-    ${(Object.values(chemicalCosts).reduce((sum, cost) => sum + (cost || 0), 0) * 365).toFixed(0)} <span className="text-gray-500 ml-1">/year</span>
+   ${(Object.values(chemicalCosts).reduce((sum, cost: any) => sum + (cost || 0), 0) * 365).toFixed(0)} <span className="text-gray-500 ml-1">/year</span>
   </span>
 </div>
             
