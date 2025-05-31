@@ -244,7 +244,9 @@ const chemicalDatabase = {
 
 const scalingConstants = {
   CaCO3: { Ksp25: 3.36e-9, tempCoeff: -0.0055 },
-  // ... rest of scaling constants
+  CaSO4: { Ksp25: 4.93e-5, tempCoeff: -0.0040 },
+  BaSO4: { Ksp25: 1.08e-10, tempCoeff: 0 },
+  CaF2: { Ksp25: 5.3e-9, tempCoeff: 0 }
 };
 
   const resultLabels = {
