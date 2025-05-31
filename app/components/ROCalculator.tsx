@@ -51,14 +51,41 @@ waterAnalysis: {
     boron: 4.5,
     carbonDioxide: 0,   // CO2 (NEW)
   }
-}
-  // Add this to your resetCalculator function in the setInputs call
+},
+
 chemicalDosing: {
-  acidAdjustment: { enabled: false, chemical: 'HCl', targetPH: 6.5, dosage: 0, cost: 0 },
-  antiscalant: { enabled: false, chemical: 'Na6P6O18', dosage: 3.0, cost: 0 },
-  coagulant: { enabled: false, chemical: 'FeCl3', dosage: 5.0, cost: 0 },
-  dechlorinator: { enabled: false, chemical: 'Na2S2O5', dosage: 2.0, cost: 0 },
-  baseAdjustment: { enabled: false, chemical: 'NaOH30', targetPH: 8.0, dosage: 0, cost: 0 }
+  acidAdjustment: {
+    enabled: false,
+    chemical: 'HCl',
+    targetPH: 6.5,
+    dosage: 0,
+    cost: 0
+  },
+  antiscalant: {
+    enabled: false,
+    chemical: 'Na6P6O18',
+    dosage: 3.0,
+    cost: 0
+  },
+  coagulant: {
+    enabled: false,
+    chemical: 'FeCl3',
+    dosage: 5.0,
+    cost: 0
+  },
+  dechlorinator: {
+    enabled: false,
+    chemical: 'Na2S2O5',
+    dosage: 2.0,
+    cost: 0
+  },
+  baseAdjustment: {
+    enabled: false,
+    chemical: 'NaOH30',
+    targetPH: 8.0,
+    dosage: 0,
+    cost: 0
+  }
 }
 });
   
@@ -560,43 +587,15 @@ waterAnalysis: {
   cations: { sodium: 0, calcium: 0, magnesium: 0, potassium: 0, ammonium: 0, strontium: 0, barium: 0 },
   anions: { chloride: 0, sulfate: 0, bicarbonate: 0, carbonate: 0, fluoride: 0, nitrate: 0, phosphate: 0, bromide: 0 },
   neutrals: { silica: 0, boron: 0, carbonDioxide: 0 }
+},
+chemicalDosing: {
+  acidAdjustment: { enabled: false, chemical: 'HCl', targetPH: 6.5, dosage: 0, cost: 0 },
+  antiscalant: { enabled: false, chemical: 'Na6P6O18', dosage: 3.0, cost: 0 },
+  coagulant: { enabled: false, chemical: 'FeCl3', dosage: 5.0, cost: 0 },
+  dechlorinator: { enabled: false, chemical: 'Na2S2O5', dosage: 2.0, cost: 0 },
+  baseAdjustment: { enabled: false, chemical: 'NaOH30', targetPH: 8.0, dosage: 0, cost: 0 }
 }
     });
-
-chemicalDosing: {
-  acidAdjustment: {
-    enabled: false,
-    chemical: 'HCl',
-    targetPH: 6.5,
-    dosage: 0,
-    cost: 0
-  },
-  antiscalant: {
-    enabled: false,
-    chemical: 'Na6P6O18',
-    dosage: 3.0,
-    cost: 0
-  },
-  coagulant: {
-    enabled: false,
-    chemical: 'FeCl3',
-    dosage: 5.0,
-    cost: 0
-  },
-  dechlorinator: {
-    enabled: false,
-    chemical: 'Na2S2O5',
-    dosage: 2.0,
-    cost: 0
-  },
-  baseAdjustment: {
-    enabled: false,
-    chemical: 'NaOH30',
-    targetPH: 8.0,
-    dosage: 0,
-    cost: 0
-  }
-}
 
     // Reset results
     setResults({
@@ -1415,16 +1414,12 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
             },
           });
         }
-        // Add this code right before setResults in your calculate function
 const warnings = checkScalingPotential(inputs.waterAnalysis, inputs.temperature, actualRecovery);
 const calculatedChemicalDosing = calculateChemicalDosing(inputs.feedFlow, inputs.waterAnalysis, actualRecovery, inputs.temperature);
-
-// Calculate total chemical costs
 const totalDailyChemicalCost = Object.values(calculatedChemicalDosing).reduce((sum, dosing) => sum + (dosing.cost || 0), 0);
-
 setScalingWarnings(warnings);
 setChemicalCosts(calculatedChemicalDosing);
-        // Update the results state
+        
         setResults({
           elementResults: formattedElementResults,
           systemResults: {
