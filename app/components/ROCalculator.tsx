@@ -85,6 +85,20 @@ waterAnalysis: {
       feedPressure: 0,
       averageNDP: 0,
     },
+    // ADD THE NEW RESULT SECTIONS RIGHT HERE ↓
+    scalingAnalysis: {
+      saturationRatios: {},
+      warnings: [],
+      LSI: 0,
+      pHs: 0
+    },
+    chemicalResults: {
+      dailyConsumption: {},
+      dailyCosts: {},
+      totalDailyCost: 0,
+      recommendations: []
+    }
+    // ↑ ADD THE NEW RESULT SECTIONS UP TO HERE
   });
   
   const [calculating, setCalculating] = useState(false);
@@ -214,6 +228,24 @@ waterAnalysis: {
   maxPressureDrop: 15
 }
   };
+  // ADD ALL THE CHEMICAL DATABASE CODE RIGHT HERE ↓
+const chemicalDatabase = {
+  'HCl': {
+    symbol: 'HCl',
+    name: 'Hydrochloric Acid',
+    category: 'Acid',
+    concentration: 32.0,
+    density: 1.1604,
+    price: 0.10,
+    molecularWeight: 36.46
+  },
+  // ... rest of chemical database
+};
+
+const scalingConstants = {
+  CaCO3: { Ksp25: 3.36e-9, tempCoeff: -0.0055 },
+  // ... rest of scaling constants
+};
 
   const resultLabels = {
     recovery: { label: "Recovery", unit: "%" },
@@ -292,6 +324,31 @@ const ionData = {
   // Van't Hoff equation: π = 1.12 × (273 + T) × Σmj
   return 1.12 * (273 + temperature) * totalMolality;
 };
+  // ADD ALL THE NEW CHEMICAL FUNCTIONS RIGHT HERE ↓
+// Calculate ionic strength for activity coefficients
+const calculateIonicStrength = (waterAnalysis) => {
+  const I = 0.5 * (
+    // ... function content
+  );
+  return I;
+};
+
+const calculateSaturationRatios = (waterAnalysis, recovery, temperature) => {
+  // ... function content
+};
+
+const generateScalingWarnings = (saturationRatios) => {
+  // ... function content
+};
+
+const calculateLSI = (waterAnalysis, temperature) => {
+  // ... function content
+};
+
+const calculateChemicalResults = (waterAnalysis, feedFlow, chemicalDosing, saturationRatios) => {
+  // ... function content
+};
+// ↑ ADD ALL THE CHEMICAL FUNCTIONS UP TO HERE
   
   // Helper function to calculate concentration polarization factor
   const calculatePolarizationFactor = (recovery: number) => {
@@ -390,9 +447,36 @@ useUniformElements: true,
 elementsPerVessel: 7,
 // ADDITION 6: Updated water analysis with new ions
 waterAnalysis: {
+   pH: 6.0,
   cations: { sodium: 0, calcium: 0, magnesium: 0, potassium: 0, ammonium: 0, strontium: 0, barium: 0 },
   anions: { chloride: 0, sulfate: 0, bicarbonate: 0, carbonate: 0, fluoride: 0, nitrate: 0, phosphate: 0, bromide: 0 },
   neutrals: { silica: 0, boron: 0, carbonDioxide: 0 }
+}
+      // ADD COMMA AND NEW SECTION RIGHT HERE ↓
+,
+chemicalDosing: {
+  antiscalant: {
+    enabled: false,
+    type: 'Na6P6O18',
+    dosage: 2.0,
+  },
+  acidDosing: {
+    enabled: false,
+    type: 'HCl',
+    targetPH: 6.5,
+    dosage: 0,
+  },
+  baseDosing: {
+    enabled: false,
+    type: 'NaOH (30)',
+    targetPH: 8.0,
+    dosage: 0,
+  },
+  coagulant: {
+    enabled: false,
+    type: 'FeCl3',
+    dosage: 5.0,
+  }
 }
     });
 
@@ -1078,7 +1162,23 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
             },
           });
         }
-        
+        // ADD THE CHEMICAL ANALYSIS RIGHT BEFORE setResults ↓
+        // Chemical analysis
+        const saturationRatios = calculateSaturationRatios(
+          inputs.waterAnalysis, 
+          inputs.recoveryTarget, 
+          inputs.temperature
+        );
+
+        const scalingWarnings = generateScalingWarnings(saturationRatios);
+        const lsiResults = calculateLSI(inputs.waterAnalysis, inputs.temperature);
+        const chemicalResults = calculateChemicalResults(
+          inputs.waterAnalysis,
+          inputs.feedFlow,
+          inputs.chemicalDosing || {},
+          saturationRatios
+        );
+// ↑ ADD THE CHEMICAL ANALYSIS UP TO HERE
         // Update the results state
         setResults({
           elementResults: formattedElementResults,
@@ -1096,6 +1196,15 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
             feedPressure: parseFloat(bestFeedPressure.toFixed(1)),
             averageNDP: parseFloat(bestResults.averageNDP.toFixed(1)),
           },
+          // ADD THE NEW SECTIONS RIGHT HERE ↓
+          scalingAnalysis: {
+            saturationRatios: saturationRatios,
+            warnings: scalingWarnings,
+            LSI: lsiResults.LSI,
+            pHs: lsiResults.pHs
+          },
+          chemicalResults: chemicalResults
+          // ↑ ADD THE NEW SECTIONS UP TO HERE
         });
       }
       
@@ -1353,7 +1462,25 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
             {/* Water Analysis Section */}
 <div className="bg-gray-50 p-4 rounded-lg mb-4">
   <h4 className="text-md font-semibold text-blue-700 mb-3">Water Analysis (mg/L)</h4>
-  
+  // ADD THE pH INPUT RIGHT HERE ↓
+  <div className="space-y-2 mb-4 p-3 bg-blue-50 rounded border border-blue-200">
+    <label className="block text-sm font-medium text-gray-700">
+      pH (Critical for scaling calculations)
+    </label>
+    <input
+      type="number"
+      value={inputs.waterAnalysis.pH || 7.0}
+      onChange={(e) => setInputs(prev => ({
+        ...prev,
+        waterAnalysis: { ...prev.waterAnalysis, pH: parseFloat(e.target.value) || 7.0 }
+      }))}
+      className="w-full p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500"
+      step="0.1"
+      min="1"
+      max="14"
+    />
+  </div>
+  // ↑ ADD THE pH INPUT UP TO HERE
   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
     {/* Cations */}
     <div>
@@ -1464,6 +1591,25 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
     </div>
   </div>
 </div>
+            // ADD THE CHEMICAL DOSING UI RIGHT HERE ↓
+{/* Chemical Dosing Section */}
+<div className="bg-yellow-50 p-4 rounded-lg mb-4 border border-yellow-200">
+  <h4 className="text-md font-semibold text-blue-700 mb-3">💧 Chemical Dosing</h4>
+  
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    {/* Antiscalant */}
+    <div className="bg-white p-3 rounded border">
+      // ... antiscalant UI code
+    </div>
+    
+    {/* Acid Dosing */}
+    <div className="bg-white p-3 rounded border">
+      // ... acid dosing UI code  
+    </div>
+  </div>
+</div>
+// ↑ ADD THE CHEMICAL DOSING UI UP TO HERE
+            
             {/* Element Type Selection */}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700">
@@ -1651,6 +1797,29 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
       </div>
 
       <div className="mt-8 grid grid-cols-1 gap-8">
+         // ADD ALL THE RESULTS DISPLAY RIGHT HERE ↓
+        
+        {/* Scaling Warnings */}
+        {results.scalingAnalysis && results.scalingAnalysis.warnings.length > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+            // ... scaling warnings UI
+          </div>
+        )}
+
+        {/* Chemical Results */}
+        {results.chemicalResults && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+            // ... chemical results UI
+          </div>
+        )}
+
+        {/* Scaling Analysis Details */}
+        {results.scalingAnalysis && (
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+            // ... scaling analysis UI
+          </div>
+        )}
+        // ↑ ADD ALL THE RESULTS DISPLAY UP TO HERE
         {/* Performance Graphs */}
         <div className="bg-gray-50 p-6 rounded-lg">
           <h3 className="text-lg font-semibold text-blue-700 mb-4">
