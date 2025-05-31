@@ -728,8 +728,8 @@ const checkScalingPotential = (waterAnalysis, temperature, recovery) => {
 const calculateLSI = (waterAnalysis, temperature) => {
   // Simplified LSI calculation
   const assumedPH = 8.0; // Typical seawater pH
-  const tds = Object.values(waterAnalysis.cations).reduce((a,b) => a+b, 0) + 
-              Object.values(waterAnalysis.anions).reduce((a,b) => a+b, 0);
+const tds = Object.values(waterAnalysis.cations).reduce((a,b) => Number(a) + Number(b), 0) + 
+            Object.values(waterAnalysis.anions).reduce((a,b) => Number(a) + Number(b), 0);
   
   const calciumMolar = waterAnalysis.cations.calcium / 40080; // mg/L to mol/L
   const alkalinityMolar = (waterAnalysis.anions.bicarbonate + 2 * waterAnalysis.anions.carbonate) / 50000; // mg/L as CaCO3 to mol/L
