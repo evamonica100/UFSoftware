@@ -52,7 +52,16 @@ waterAnalysis: {
     carbonDioxide: 0,   // CO2 (NEW)
   }
 }
+  // Add this to your resetCalculator function in the setInputs call
+chemicalDosing: {
+  acidAdjustment: { enabled: false, chemical: 'HCl', targetPH: 6.5, dosage: 0, cost: 0 },
+  antiscalant: { enabled: false, chemical: 'Na6P6O18', dosage: 3.0, cost: 0 },
+  coagulant: { enabled: false, chemical: 'FeCl3', dosage: 5.0, cost: 0 },
+  dechlorinator: { enabled: false, chemical: 'Na2S2O5', dosage: 2.0, cost: 0 },
+  baseAdjustment: { enabled: false, chemical: 'NaOH30', targetPH: 8.0, dosage: 0, cost: 0 }
+}
 });
+  
 
   const inputLabels = {
     stages: { label: "Number of Stages", unit: "" },
@@ -90,6 +99,8 @@ waterAnalysis: {
   const [calculating, setCalculating] = useState(false);
   const [iterationCount, setIterationCount] = useState(0);
   const [convergenceStatus, setConvergenceStatus] = useState('');
+  const [scalingWarnings, setScalingWarnings] = useState([]);
+const [chemicalCosts, setChemicalCosts] = useState({});
   
   // Constants and conversion factors
   const GPD_TO_M3H = 0.00015771; // Gallons per day to cubic meters per hour
@@ -215,6 +226,162 @@ waterAnalysis: {
 }
   };
 
+const chemicalDatabase = {
+  'HCl': {
+    name: 'Hydrochloric Acid',
+    displayAs: 'HCl (32)',
+    category: 'Acid',
+    bulkConcentration: 32.00,
+    bulkDensity: 1.1604,
+    bulkPrice: 0.10,
+    costType: 'kg',
+    formula: 'HCl',
+    molecularWeight: 36.458
+  },
+  'H2SO4': {
+    name: 'Sulfuric Acid',
+    displayAs: 'H2SO4(98)',
+    category: 'Acid',
+    bulkConcentration: 98.00,
+    bulkDensity: 1.8385,
+    bulkPrice: 0.06,
+    costType: 'kg',
+    formula: 'H2SO4',
+    molecularWeight: 98.079
+  },
+  'Na6P6O18': {
+    name: 'Sodium Hexametaphosphate',
+    displayAs: 'Na6P6O18(100)',
+    category: 'Antiscalant',
+    bulkConcentration: 100.00,
+    bulkDensity: 2.4840,
+    bulkPrice: 1.00,
+    costType: 'kg',
+    formula: 'Na6P6O18',
+    molecularWeight: 611.77
+  },
+  'Na2CO3': {
+    name: 'Sodium Carbonate',
+    displayAs: 'Na2CO3 (15)',
+    category: 'Base',
+    bulkConcentration: 15.00,
+    bulkDensity: 1.1589,
+    bulkPrice: 0.10,
+    costType: 'kg',
+    formula: 'Na2CO3',
+    molecularWeight: 105.99
+  },
+  'NaOH30': {
+    name: 'Sodium Hydroxide',
+    displayAs: 'NaOH (30)',
+    category: 'Base',
+    bulkConcentration: 30.00,
+    bulkDensity: 1.3286,
+    bulkPrice: 0.26,
+    costType: 'kg',
+    formula: 'NaOH',
+    molecularWeight: 39.997
+  },
+  'NaOH50': {
+    name: 'Sodium Hydroxide',
+    displayAs: 'NaOH (50)',
+    category: 'Base',
+    bulkConcentration: 50.00,
+    bulkDensity: 1.5238,
+    bulkPrice: 0.26,
+    costType: 'kg',
+    formula: 'NaOH',
+    molecularWeight: 39.997
+  },
+  'FeCl3': {
+    name: 'Ferric Chloride',
+    displayAs: 'FeCl3(100)',
+    category: 'Coagulant',
+    bulkConcentration: 100.00,
+    bulkDensity: 2.8980,
+    bulkPrice: 1.67,
+    costType: 'kg',
+    formula: 'FeCl3',
+    molecularWeight: 162.204
+  },
+  'PACl': {
+    name: 'Polyaluminum Chloride',
+    displayAs: 'Al2(OH)nCl6-n (5.5)',
+    category: 'Coagulant',
+    bulkConcentration: 5.50,
+    bulkDensity: 1.2000,
+    bulkPrice: 0.40,
+    costType: 'kg',
+    formula: 'Al2(OH)nCl6-n',
+    molecularWeight: 174.45
+  },
+  'Na2S2O5': {
+    name: 'Sodium Metabisulfite',
+    displayAs: 'Na2S2O5(100)',
+    category: 'Dechlorinator',
+    bulkConcentration: 100.00,
+    bulkDensity: 1.4800,
+    bulkPrice: 2.07,
+    costType: 'kg',
+    formula: 'Na2S2O5',
+    molecularWeight: 190.107
+  },
+  'C6H8O7': {
+    name: 'Citric Acid',
+    displayAs: 'Citric Acid(100)',
+    category: 'Organic Acid',
+    bulkConcentration: 100.00,
+    bulkDensity: 1.6650,
+    bulkPrice: 1.52,
+    costType: 'kg',
+    formula: 'C6H8O7',
+    molecularWeight: 192.124
+  },
+  'C2O4H2': {
+    name: 'Oxalic Acid',
+    displayAs: 'Oxalic Acid(100)',
+    category: 'Organic Acid',
+    bulkConcentration: 100.00,
+    bulkDensity: 1.9000,
+    bulkPrice: 0.94,
+    costType: 'kg',
+    formula: 'C2O4H2',
+    molecularWeight: 90.03
+  },
+  'NaOCl': {
+    name: 'Sodium Hypochlorite',
+    displayAs: 'NaOCl(12)',
+    category: 'Oxidant',
+    bulkConcentration: 12.00,
+    bulkDensity: 1.1364,
+    bulkPrice: 0.33,
+    costType: 'kg',
+    formula: 'NaOCl',
+    molecularWeight: 74.442
+  },
+  'NaCl': {
+    name: 'Sodium Chloride',
+    displayAs: 'NaCl (26)',
+    category: 'Salt',
+    bulkConcentration: 26.00,
+    bulkDensity: 1.1988,
+    bulkPrice: 0.10,
+    costType: 'kg',
+    formula: 'NaCl',
+    molecularWeight: 58.44
+  },
+  'SLS': {
+    name: 'Sodium Lauryl Sulfate',
+    displayAs: 'CH3(CH2)11SO4Na',
+    category: 'Surfactant',
+    bulkConcentration: 100.00,
+    bulkDensity: 1.0100,
+    bulkPrice: 0.45,
+    costType: 'kg',
+    formula: 'CH3(CH2)11SO4Na',
+    molecularWeight: 288.38
+  }
+};
   const resultLabels = {
     recovery: { label: "Recovery", unit: "%" },
     limitingRecovery: { label: "Limiting Recovery", unit: "%" },
@@ -396,6 +563,41 @@ waterAnalysis: {
 }
     });
 
+chemicalDosing: {
+  acidAdjustment: {
+    enabled: false,
+    chemical: 'HCl',
+    targetPH: 6.5,
+    dosage: 0,
+    cost: 0
+  },
+  antiscalant: {
+    enabled: false,
+    chemical: 'Na6P6O18',
+    dosage: 3.0,
+    cost: 0
+  },
+  coagulant: {
+    enabled: false,
+    chemical: 'FeCl3',
+    dosage: 5.0,
+    cost: 0
+  },
+  dechlorinator: {
+    enabled: false,
+    chemical: 'Na2S2O5',
+    dosage: 2.0,
+    cost: 0
+  },
+  baseAdjustment: {
+    enabled: false,
+    chemical: 'NaOH30',
+    targetPH: 8.0,
+    dosage: 0,
+    cost: 0
+  }
+}
+
     // Reset results
     setResults({
       elementResults: [],
@@ -455,6 +657,141 @@ waterAnalysis: {
   const calculatePressureDrop = (flow: number, isFirstStage: boolean) => {
     return isFirstStage ? 20 : 15; // Simplified calculation
   };
+  // Add these functions before the main calculate function
+const checkScalingPotential = (waterAnalysis, temperature, recovery) => {
+  const warnings = [];
+  
+  // LSI calculation for CaCO3 scaling
+  const lsi = calculateLSI(waterAnalysis, temperature);
+  if (lsi > 0.2) {
+    warnings.push({
+      type: 'scaling',
+      severity: lsi > 1.0 ? 'critical' : 'high',
+      compound: 'CaCO3',
+      message: `CaCO3 scaling potential (LSI: ${lsi.toFixed(2)}). ${lsi > 1.0 ? 'Critical risk!' : 'Consider acid dosing.'}`
+    });
+  }
+  
+  // CaSO4 solubility check
+  const concentrateCa = waterAnalysis.cations.calcium / (1 - recovery);
+  const concentrateSO4 = waterAnalysis.anions.sulfate / (1 - recovery);
+  const caSO4Product = (concentrateCa * concentrateSO4) / 1000000; // Convert to mol²/L²
+  
+  if (caSO4Product > 0.25) {
+    warnings.push({
+      type: 'scaling',
+      severity: caSO4Product > 0.5 ? 'critical' : 'high',
+      compound: 'CaSO4',
+      message: `CaSO4 scaling risk at ${(recovery*100).toFixed(1)}% recovery. ${caSO4Product > 0.5 ? 'Reduce recovery!' : 'Consider antiscalant.'}`
+    });
+  }
+  
+  // BaSO4 check
+  if (waterAnalysis.cations.barium > 0.1) {
+    const concentrateBa = waterAnalysis.cations.barium / (1 - recovery);
+    const baSO4Product = (concentrateBa * concentrateSO4) / 1000000;
+    if (baSO4Product > 0.001) {
+      warnings.push({
+        type: 'scaling',
+        severity: 'critical',
+        compound: 'BaSO4',
+        message: 'BaSO4 scaling risk detected. Consider Ba removal pretreatment.'
+      });
+    }
+  }
+  
+  // Silica scaling check
+  if (waterAnalysis.neutrals.silica > 0) {
+    const concentrateSilica = waterAnalysis.neutrals.silica / (1 - recovery);
+    if (concentrateSilica > 150) {
+      warnings.push({
+        type: 'scaling',
+        severity: concentrateSilica > 200 ? 'critical' : 'high',
+        compound: 'SiO2',
+        message: `Silica scaling risk. Concentrate silica: ${concentrateSilica.toFixed(1)} mg/L`
+      });
+    }
+  }
+  
+  // High recovery warning
+  if (recovery > 0.85) {
+    warnings.push({
+      type: 'operational',
+      severity: 'high',
+      compound: 'General',
+      message: `Very high recovery (${(recovery*100).toFixed(1)}%). Monitor all scaling indices carefully.`
+    });
+  }
+  
+  return warnings;
+};
+
+const calculateLSI = (waterAnalysis, temperature) => {
+  // Simplified LSI calculation
+  const assumedPH = 8.0; // Typical seawater pH
+  const tds = Object.values(waterAnalysis.cations).reduce((a,b) => a+b, 0) + 
+              Object.values(waterAnalysis.anions).reduce((a,b) => a+b, 0);
+  
+  const calciumMolar = waterAnalysis.cations.calcium / 40080; // mg/L to mol/L
+  const alkalinityMolar = (waterAnalysis.anions.bicarbonate + 2 * waterAnalysis.anions.carbonate) / 50000; // mg/L as CaCO3 to mol/L
+  
+  const pCa = -Math.log10(calciumMolar);
+  const pAlk = -Math.log10(alkalinityMolar);
+  const pKs = 8.48 - (0.4 * Math.log10(tds/1000)) + (0.045 * temperature);
+  
+  const pHs = pKs + pCa + pAlk;
+  return assumedPH - pHs;
+};
+
+const calculateChemicalDosing = (feedFlow, waterAnalysis, recovery, temperature) => {
+  const dosing = JSON.parse(JSON.stringify(inputs.chemicalDosing)); // Deep copy
+  const dailyFlow = feedFlow * 24; // m³/day
+  
+  // Acid dosing calculation
+  if (dosing.acidAdjustment.enabled) {
+    const alkalinity = waterAnalysis.anions.bicarbonate + 2 * waterAnalysis.anions.carbonate;
+    const currentPH = 8.0; // Assume typical seawater pH
+    const targetPH = dosing.acidAdjustment.targetPH;
+    
+    // Simplified acid dosing (mg/L as CaCO3 equivalent)
+    const acidDosageAsCaCO3 = alkalinity * (currentPH - targetPH) * 0.8;
+    
+    // Convert to actual chemical dosage
+    const selectedAcid = chemicalDatabase[dosing.acidAdjustment.chemical];
+    const acidDosage = (acidDosageAsCaCO3 * selectedAcid.molecularWeight) / (50000 * selectedAcid.bulkConcentration / 100);
+    
+    dosing.acidAdjustment.dosage = acidDosage;
+    dosing.acidAdjustment.cost = (acidDosage * dailyFlow * selectedAcid.bulkPrice) / 1000000; // $/day
+  }
+  
+  // Antiscalant cost calculation
+  if (dosing.antiscalant.enabled) {
+    const antiscalant = chemicalDatabase[dosing.antiscalant.chemical];
+    dosing.antiscalant.cost = (dosing.antiscalant.dosage * dailyFlow * antiscalant.bulkPrice) / 1000000; // $/day
+  }
+  
+  // Coagulant cost calculation
+  if (dosing.coagulant.enabled) {
+    const coagulant = chemicalDatabase[dosing.coagulant.chemical];
+    dosing.coagulant.cost = (dosing.coagulant.dosage * dailyFlow * coagulant.bulkPrice) / 1000000; // $/day
+  }
+  
+  // Dechlorinator cost calculation
+  if (dosing.dechlorinator.enabled) {
+    const dechlorinator = chemicalDatabase[dosing.dechlorinator.chemical];
+    dosing.dechlorinator.cost = (dosing.dechlorinator.dosage * dailyFlow * dechlorinator.bulkPrice) / 1000000; // $/day
+  }
+  
+  // Base adjustment cost calculation
+  if (dosing.baseAdjustment.enabled) {
+    const base = chemicalDatabase[dosing.baseAdjustment.chemical];
+    const baseDosage = 5.0; // Simplified base dosage calculation
+    dosing.baseAdjustment.dosage = baseDosage;
+    dosing.baseAdjustment.cost = (baseDosage * dailyFlow * base.bulkPrice) / 1000000; // $/day
+  }
+  
+  return dosing;
+};
 
   const calculateTotalPermeateFlow = (
     elements: number,
@@ -1078,7 +1415,15 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
             },
           });
         }
-        
+        // Add this code right before setResults in your calculate function
+const warnings = checkScalingPotential(inputs.waterAnalysis, inputs.temperature, actualRecovery);
+const calculatedChemicalDosing = calculateChemicalDosing(inputs.feedFlow, inputs.waterAnalysis, actualRecovery, inputs.temperature);
+
+// Calculate total chemical costs
+const totalDailyChemicalCost = Object.values(calculatedChemicalDosing).reduce((sum, dosing) => sum + (dosing.cost || 0), 0);
+
+setScalingWarnings(warnings);
+setChemicalCosts(calculatedChemicalDosing);
         // Update the results state
         setResults({
           elementResults: formattedElementResults,
@@ -1095,6 +1440,9 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
             feedOsmoticPressure: parseFloat(bestResults.feedOsmoticPressure.toFixed(1)),
             feedPressure: parseFloat(bestFeedPressure.toFixed(1)),
             averageNDP: parseFloat(bestResults.averageNDP.toFixed(1)),
+             scalingWarnings: warnings,
+    chemicalDosing: calculatedChemicalDosing,
+    totalDailyChemicalCost: totalDailyChemicalCost
           },
         });
       }
@@ -1465,6 +1813,274 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
   </div>
 </div>
             {/* Element Type Selection */}
+            {/* Chemical Dosing Section - Add this after Water Analysis */}
+<div className="bg-blue-50 p-4 rounded-lg mb-4 border border-blue-200">
+  <h4 className="text-md font-semibold text-blue-700 mb-3">Chemical Dosing & Pretreatment</h4>
+  
+  {/* Acid Adjustment */}
+  <div className="border rounded p-3 mb-3 bg-white">
+    <label className="flex items-center mb-2">
+      <input 
+        type="checkbox" 
+        checked={inputs.chemicalDosing.acidAdjustment.enabled}
+        onChange={(e) => setInputs(prev => ({
+          ...prev,
+          chemicalDosing: {
+            ...prev.chemicalDosing,
+            acidAdjustment: { ...prev.chemicalDosing.acidAdjustment, enabled: e.target.checked }
+          }
+        }))}
+        className="mr-2"
+      />
+      <span className="font-medium text-gray-700">Acid Adjustment (pH Control)</span>
+    </label>
+    
+    {inputs.chemicalDosing.acidAdjustment.enabled && (
+      <div className="grid grid-cols-3 gap-2 ml-6">
+        <div>
+          <label className="block text-sm text-gray-600">Chemical:</label>
+          <select 
+            value={inputs.chemicalDosing.acidAdjustment.chemical}
+            onChange={(e) => setInputs(prev => ({
+              ...prev,
+              chemicalDosing: {
+                ...prev.chemicalDosing,
+                acidAdjustment: { ...prev.chemicalDosing.acidAdjustment, chemical: e.target.value }
+              }
+            }))}
+            className="w-full p-1 border rounded text-sm"
+          >
+            <option value="HCl">HCl (32%)</option>
+            <option value="H2SO4">H2SO4 (98%)</option>
+            <option value="C6H8O7">Citric Acid</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm text-gray-600">Target pH:</label>
+          <input 
+            type="number" 
+            step="0.1" 
+            min="5" 
+            max="8" 
+            value={inputs.chemicalDosing.acidAdjustment.targetPH}
+            onChange={(e) => setInputs(prev => ({
+              ...prev,
+              chemicalDosing: {
+                ...prev.chemicalDosing,
+                acidAdjustment: { ...prev.chemicalDosing.acidAdjustment, targetPH: parseFloat(e.target.value) || 6.5 }
+              }
+            }))}
+            className="w-full p-1 border rounded text-sm" 
+          />
+        </div>
+        <div>
+          <label className="block text-sm text-gray-600">Dosage (mg/L):</label>
+          <input 
+            type="number" 
+            value={inputs.chemicalDosing.acidAdjustment.dosage.toFixed(1)}
+            readOnly
+            className="w-full p-1 border rounded text-sm bg-gray-100" 
+          />
+        </div>
+      </div>
+    )}
+  </div>
+  
+  {/* Antiscalant */}
+  <div className="border rounded p-3 mb-3 bg-white">
+    <label className="flex items-center mb-2">
+      <input 
+        type="checkbox"
+        checked={inputs.chemicalDosing.antiscalant.enabled}
+        onChange={(e) => setInputs(prev => ({
+          ...prev,
+          chemicalDosing: {
+            ...prev.chemicalDosing,
+            antiscalant: { ...prev.chemicalDosing.antiscalant, enabled: e.target.checked }
+          }
+        }))}
+        className="mr-2"
+      />
+      <span className="font-medium text-gray-700">Antiscalant</span>
+    </label>
+    
+    {inputs.chemicalDosing.antiscalant.enabled && (
+      <div className="grid grid-cols-2 gap-2 ml-6">
+        <div>
+          <label className="block text-sm text-gray-600">Chemical:</label>
+          <select 
+            value={inputs.chemicalDosing.antiscalant.chemical}
+            onChange={(e) => setInputs(prev => ({
+              ...prev,
+              chemicalDosing: {
+                ...prev.chemicalDosing,
+                antiscalant: { ...prev.chemicalDosing.antiscalant, chemical: e.target.value }
+              }
+            }))}
+            className="w-full p-1 border rounded text-sm"
+          >
+            <option value="Na6P6O18">Sodium Hexametaphosphate</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm text-gray-600">Dosage (mg/L):</label>
+          <input 
+            type="number" 
+            step="0.1"
+            value={inputs.chemicalDosing.antiscalant.dosage}
+            onChange={(e) => setInputs(prev => ({
+              ...prev,
+              chemicalDosing: {
+                ...prev.chemicalDosing,
+                antiscalant: { ...prev.chemicalDosing.antiscalant, dosage: parseFloat(e.target.value) || 3.0 }
+              }
+            }))}
+            className="w-full p-1 border rounded text-sm" 
+          />
+        </div>
+      </div>
+    )}
+  </div>
+  
+  {/* Coagulant */}
+  <div className="border rounded p-3 mb-3 bg-white">
+    <label className="flex items-center mb-2">
+      <input 
+        type="checkbox"
+        checked={inputs.chemicalDosing.coagulant.enabled}
+        onChange={(e) => setInputs(prev => ({
+          ...prev,
+          chemicalDosing: {
+            ...prev.chemicalDosing,
+            coagulant: { ...prev.chemicalDosing.coagulant, enabled: e.target.checked }
+          }
+        }))}
+        className="mr-2"
+      />
+      <span className="font-medium text-gray-700">Coagulant</span>
+    </label>
+    
+    {inputs.chemicalDosing.coagulant.enabled && (
+      <div className="grid grid-cols-2 gap-2 ml-6">
+        <div>
+          <label className="block text-sm text-gray-600">Chemical:</label>
+          <select 
+            value={inputs.chemicalDosing.coagulant.chemical}
+            onChange={(e) => setInputs(prev => ({
+              ...prev,
+              chemicalDosing: {
+                ...prev.chemicalDosing,
+                coagulant: { ...prev.chemicalDosing.coagulant, chemical: e.target.value }
+              }
+            }))}
+            className="w-full p-1 border rounded text-sm"
+          >
+            <option value="FeCl3">Ferric Chloride</option>
+            <option value="PACl">Polyaluminum Chloride</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm text-gray-600">Dosage (mg/L):</label>
+          <input 
+            type="number" 
+            step="0.1"
+            value={inputs.chemicalDosing.coagulant.dosage}
+            onChange={(e) => setInputs(prev => ({
+              ...prev,
+              chemicalDosing: {
+                ...prev.chemicalDosing,
+                coagulant: { ...prev.chemicalDosing.coagulant, dosage: parseFloat(e.target.value) || 5.0 }
+              }
+            }))}
+            className="w-full p-1 border rounded text-sm" 
+          />
+        </div>
+      </div>
+    )}
+  </div>
+  
+  {/* Dechlorinator */}
+  <div className="border rounded p-3 mb-3 bg-white">
+    <label className="flex items-center mb-2">
+      <input 
+        type="checkbox"
+        checked={inputs.chemicalDosing.dechlorinator.enabled}
+        onChange={(e) => setInputs(prev => ({
+          ...prev,
+          chemicalDosing: {
+            ...prev.chemicalDosing,
+            dechlorinator: { ...prev.chemicalDosing.dechlorinator, enabled: e.target.checked }
+          }
+        }))}
+        className="mr-2"
+      />
+      <span className="font-medium text-gray-700">Dechlorinator</span>
+    </label>
+    
+    {inputs.chemicalDosing.dechlorinator.enabled && (
+      <div className="grid grid-cols-2 gap-2 ml-6">
+        <div>
+          <label className="block text-sm text-gray-600">Chemical:</label>
+          <select 
+            value={inputs.chemicalDosing.dechlorinator.chemical}
+            onChange={(e) => setInputs(prev => ({
+              ...prev,
+              chemicalDosing: {
+                ...prev.chemicalDosing,
+                dechlorinator: { ...prev.chemicalDosing.dechlorinator, chemical: e.target.value }
+              }
+            }))}
+            className="w-full p-1 border rounded text-sm"
+          >
+            <option value="Na2S2O5">Sodium Metabisulfite</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm text-gray-600">Dosage (mg/L):</label>
+          <input 
+            type="number" 
+            step="0.1"
+            value={inputs.chemicalDosing.dechlorinator.dosage}
+            onChange={(e) => setInputs(prev => ({
+              ...prev,
+              chemicalDosing: {
+                ...prev.chemicalDosing,
+                dechlorinator: { ...prev.chemicalDosing.dechlorinator, dosage: parseFloat(e.target.value) || 2.0 }
+              }
+            }))}
+            className="w-full p-1 border rounded text-sm" 
+          />
+        </div>
+      </div>
+    )}
+  </div>
+</div>
+            {/* Scaling Warnings Section */}
+{scalingWarnings.length > 0 && (
+  <div className="bg-red-50 p-4 rounded-lg mb-4 border border-red-200">
+    <h4 className="text-md font-semibold text-red-700 mb-3 flex items-center">
+      <span className="mr-2">⚠️</span>
+      Scaling & Fouling Warnings
+    </h4>
+    {scalingWarnings.map((warning, idx) => (
+      <div key={idx} className={`p-3 rounded mb-2 border-l-4 ${
+        warning.severity === 'critical' ? 'bg-red-100 border-red-500 text-red-800' :
+        warning.severity === 'high' ? 'bg-orange-100 border-orange-500 text-orange-800' :
+        'bg-yellow-100 border-yellow-500 text-yellow-800'
+      }`}>
+        <div className="flex items-start">
+          <span className="font-semibold mr-2">
+            {warning.severity === 'critical' ? '🔴' : warning.severity === 'high' ? '🟠' : '🟡'}
+          </span>
+          <div>
+            <span className="font-medium">{warning.compound} {warning.type}:</span>
+            <div className="text-sm mt-1">{warning.message}</div>
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+)}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700">
                 Element Type
@@ -1609,6 +2225,21 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
                 {results.systemResults.averageNDP?.toFixed(1) || 0} <span className="text-gray-500 ml-1">psi</span>
               </span>
             </div>
+
+            {/* Add these new entries in System Overview after Average NDP */}
+<div className="p-3 bg-white rounded-md flex justify-between items-center">
+  <span className="font-medium text-gray-700">Daily Chemical Cost</span>
+  <span className="text-gray-900">
+    ${(Object.values(chemicalCosts).reduce((sum, cost) => sum + (cost || 0), 0)).toFixed(2)} <span className="text-gray-500 ml-1">/day</span>
+  </span>
+</div>
+
+<div className="p-3 bg-white rounded-md flex justify-between items-center">
+  <span className="font-medium text-gray-700">Annual Chemical Cost</span>
+  <span className="text-gray-900">
+    ${(Object.values(chemicalCosts).reduce((sum, cost) => sum + (cost || 0), 0) * 365).toFixed(0)} <span className="text-gray-500 ml-1">/year</span>
+  </span>
+</div>
             
             {/* Additional parameters that might be useful */}
             <details className="bg-white rounded-md p-3">
