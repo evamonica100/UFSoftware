@@ -27,7 +27,6 @@ elementsPerVessel: 7,
 
 // ADDITION 6: Enhanced water analysis with additional ions
 waterAnalysis: {
-  pH: 7.0,
   cations: {
     sodium: 10750,
     calcium: 410,
@@ -86,20 +85,6 @@ waterAnalysis: {
       feedPressure: 0,
       averageNDP: 0,
     },
-    // ADD THE NEW RESULT SECTIONS RIGHT HERE ↓
-    scalingAnalysis: {
-      saturationRatios: {},
-      warnings: [],
-      LSI: 0,
-      pHs: 0
-    },
-    chemicalResults: {
-      dailyConsumption: {},
-      dailyCosts: {},
-      totalDailyCost: 0,
-      recommendations: []
-    }
-    // ↑ ADD THE NEW RESULT SECTIONS UP TO HERE
   });
   
   const [calculating, setCalculating] = useState(false);
@@ -229,61 +214,6 @@ waterAnalysis: {
   maxPressureDrop: 15
 }
   };
-  // ADD ALL THE CHEMICAL DATABASE CODE RIGHT HERE ↓
-const chemicalDatabase = {
-  'HCl': {
-    symbol: 'HCl',
-    name: 'Hydrochloric Acid',
-    category: 'Acid',
-    concentration: 32.0,
-    density: 1.1604,
-    price: 0.10,
-    molecularWeight: 36.46
-  },
-  'H2SO4': {
-    symbol: 'H2SO4',
-    name: 'Sulfuric Acid',
-    category: 'Acid',
-    concentration: 98.0,
-    density: 1.84,
-    price: 0.08,
-    molecularWeight: 98.08
-  },
-  'NaOH (30)': {
-    symbol: 'NaOH',
-    name: 'Sodium Hydroxide 30%',
-    category: 'Base',
-    concentration: 30.0,
-    density: 1.33,
-    price: 0.15,
-    molecularWeight: 40.0
-  },
-  'Na6P6O18': {
-    symbol: 'Na6P6O18',
-    name: 'Sodium Hexametaphosphate',
-    category: 'Antiscalant',
-    concentration: 100.0,
-    density: 1.0,
-    price: 2.50,
-    molecularWeight: 611.77
-  },
-  'FeCl3': {
-    symbol: 'FeCl3',
-    name: 'Ferric Chloride',
-    category: 'Coagulant',
-    concentration: 40.0,
-    density: 1.4,
-    price: 0.25,
-    molecularWeight: 162.2
-  }
-};
-
-const scalingConstants = {
-  CaCO3: { Ksp25: 3.36e-9, tempCoeff: -0.0055 },
-  CaSO4: { Ksp25: 4.93e-5, tempCoeff: -0.0040 },
-  BaSO4: { Ksp25: 1.08e-10, tempCoeff: 0 },
-  CaF2: { Ksp25: 5.3e-9, tempCoeff: 0 }
-};
 
   const resultLabels = {
     recovery: { label: "Recovery", unit: "%" },
@@ -361,175 +291,6 @@ const ionData = {
   
   // Van't Hoff equation: π = 1.12 × (273 + T) × Σmj
   return 1.12 * (273 + temperature) * totalMolality;
-};
-// Calculate ionic strength for activity coefficients
-const calculateIonicStrength = (waterAnalysis) => {
-  const I = 0.5 * (
-    // Monovalent cations (Z=1, Z²=1)
-    (waterAnalysis.cations.sodium / 22990) * 1 +
-    (waterAnalysis.cations.potassium / 39100) * 1 +
-    
-    // Divalent cations (Z=2, Z²=4)
-    (waterAnalysis.cations.calcium / 40080) * 4 +
-    (waterAnalysis.cations.magnesium / 24310) * 4 +
-    (waterAnalysis.cations.barium / 137330) * 4 +
-    (waterAnalysis.cations.strontium / 87620) * 4 +
-    
-    // Monovalent anions (Z=-1, Z²=1)
-    (waterAnalysis.anions.chloride / 35450) * 1 +
-    (waterAnalysis.anions.bicarbonate / 61020) * 1 +
-    (waterAnalysis.anions.fluoride / 18998) * 1 +
-    
-    // Divalent anions (Z=-2, Z²=4)
-    (waterAnalysis.anions.sulfate / 96060) * 4 +
-    (waterAnalysis.anions.carbonate / 60010) * 4
-  );
-  return I;
-};
-
-// Calculate saturation ratios using WAVE formulas
-const calculateSaturationRatios = (waterAnalysis, recovery, temperature) => {
-  const concentrationFactor = 1 / (1 - recovery / 100);
-  const ionicStrength = calculateIonicStrength(waterAnalysis);
-  
-  // Simplified activity coefficient (Davies equation)
-  const activityCoeff = Math.pow(10, -0.5 * Math.sqrt(ionicStrength) / (1 + Math.sqrt(ionicStrength)));
-  
-  // Concentrated ion concentrations (mol/L)
-  const caConcMolar = (waterAnalysis.cations.calcium * concentrationFactor / 40080) * activityCoeff;
-  const so4ConcMolar = (waterAnalysis.anions.sulfate * concentrationFactor / 96060) * activityCoeff;
-  const baConcMolar = (waterAnalysis.cations.barium * concentrationFactor / 137330) * activityCoeff;
-  const fConcMolar = (waterAnalysis.anions.fluoride * concentrationFactor / 18998) * activityCoeff;
-  
-  // Calculate CO3²- from HCO3- using pH
-  const hco3ConcMolar = (waterAnalysis.anions.bicarbonate * concentrationFactor / 61020) * activityCoeff;
-  const co3ConcMolar = hco3ConcMolar * Math.pow(10, waterAnalysis.pH - 10.33);
-  
-  // Temperature-corrected Ksp values
-  const tempK = temperature + 273.15;
-  const kspCaCO3 = scalingConstants.CaCO3.Ksp25 * Math.exp(scalingConstants.CaCO3.tempCoeff * (1/298.15 - 1/tempK));
-  const kspCaSO4 = scalingConstants.CaSO4.Ksp25 * Math.exp(scalingConstants.CaSO4.tempCoeff * (1/298.15 - 1/tempK));
-  const kspBaSO4 = scalingConstants.BaSO4.Ksp25;
-  const kspCaF2 = scalingConstants.CaF2.Ksp25;
-  
-  // Calculate saturation ratios
-  const ratios = {
-    CaCO3: (caConcMolar * co3ConcMolar) / kspCaCO3,
-    CaSO4: (caConcMolar * so4ConcMolar) / kspCaSO4,
-    BaSO4: (baConcMolar * so4ConcMolar) / kspBaSO4,
-    CaF2: (caConcMolar * Math.pow(fConcMolar, 2)) / kspCaF2
-  };
-  
-  return ratios;
-};
-
-// Generate scaling warnings like WAVE
-const generateScalingWarnings = (saturationRatios) => {
-  const warnings = [];
-  
-  Object.entries(saturationRatios).forEach(([compound, ratio]) => {
-  const ratioNum = ratio as number;
-  if (ratioNum > 1.0) {  // ← FIXED: Use ratioNum
-    warnings.push({
-      compound: compound,
-      saturation: `${(ratioNum * 100).toFixed(1)}%`,  // ← FIXED: Use ratioNum
-      pass: 1,
-      message: `${compound} (% saturation) > 100`
-    });
-  }
-});
-  
-  // Add general antiscalant recommendation if any scaling detected
-  if (warnings.length > 0) {
-    warnings.push({
-      compound: "General",
-      saturation: "",
-      pass: 1,
-      message: "Anti-scalants may be required. Consult your anti-scalant manufacturer for dosing and maximum allowable system recovery."
-    });
-  }
-  
-  return warnings;
-};
-
-// Calculate LSI using WAVE formula
-const calculateLSI = (waterAnalysis, temperature) => {
-  const pH = waterAnalysis.pH;
-  const TDS = Object.values(waterAnalysis.cations).reduce((a: number, b: unknown) => a + (Number(b) || 0), 0) + 
-             Object.values(waterAnalysis.anions).reduce((a: number, b: unknown) => a + (Number(b) || 0), 0);
-  const tempK = temperature + 273.15;
-  
-  // WAVE formula components
-  const A = (Math.log10(TDS) - 1) / 10;
-  const B = -13.12 * Math.log10(tempK) + 34.55;
-  
-  // Convert Ca mg/L to CaCO3 equivalent
-  const calciumAsCaCO3 = waterAnalysis.cations.calcium * 2.5;
-  const C = Math.log10(calciumAsCaCO3) - 0.4;
-  const D = Math.log10(waterAnalysis.anions.bicarbonate);
-  
-  const pHs = (9.3 + A + B) - (C + D);
-  const LSI = pH - pHs;
-  
-  return { LSI, pHs };
-};
-
-// Calculate chemical dosages and costs
-const calculateChemicalResults = (waterAnalysis, feedFlow, chemicalDosing, saturationRatios) => {
-  const results = {
-    dailyConsumption: {},
-    dailyCosts: {},
-    adjustedWater: { ...waterAnalysis },
-    recommendations: []
-  };
-  
-  let totalDailyCost = 0;
-  
-  // Antiscalant calculation
-  if (chemicalDosing.antiscalant && chemicalDosing.antiscalant.enabled) {
-    const dosageMgL = chemicalDosing.antiscalant.dosage;
-    const kgPerDay = feedFlow * 24 * dosageMgL / 1000000;
-    const chemical = chemicalDatabase[chemicalDosing.antiscalant.type];
-    
-    results.dailyConsumption.antiscalant = kgPerDay;
-    results.dailyCosts.antiscalant = kgPerDay * chemical.price;
-    totalDailyCost += results.dailyCosts.antiscalant;
-  }
-  
-  // Acid dosing calculation (simplified)
-  if (chemicalDosing.acidDosing && chemicalDosing.acidDosing.enabled) {
-    const currentPH = waterAnalysis.pH;
-    const targetPH = chemicalDosing.acidDosing.targetPH;
-    const phDifference = currentPH - targetPH;
-    
-    if (phDifference > 0) {
-      // Simplified: ~50 mg/L HCl per pH unit
-      const acidDosageMgL = phDifference * 50;
-      const kgPerDay = feedFlow * 24 * acidDosageMgL / 1000000;
-      const chemical = chemicalDatabase[chemicalDosing.acidDosing.type];
-      
-      results.dailyConsumption.acid = kgPerDay;
-      results.dailyCosts.acid = kgPerDay * chemical.price;
-      totalDailyCost += results.dailyCosts.acid;
-      
-      // Update pH after acid addition
-      results.adjustedWater.pH = targetPH;
-    }
-  }
-  
-  // Auto-recommendations based on scaling
-  if (Object.keys(saturationRatios).length > 0) {
-    if (Math.max(...Object.values(saturationRatios)) > 0.8 && (!chemicalDosing.antiscalant || !chemicalDosing.antiscalant.enabled)) {
-      results.recommendations.push("Enable antiscalant dosing due to scaling risk");
-    }
-    
-    if (saturationRatios.CaCO3 > 1.0 && (!chemicalDosing.acidDosing || !chemicalDosing.acidDosing.enabled)) {
-      results.recommendations.push("Consider acid dosing to reduce CaCO3 scaling");
-    }
-  }
-  
-  results.totalDailyCost = totalDailyCost;
-  return results;
 };
   
   // Helper function to calculate concentration polarization factor
@@ -629,36 +390,9 @@ useUniformElements: true,
 elementsPerVessel: 7,
 // ADDITION 6: Updated water analysis with new ions
 waterAnalysis: {
-   pH: 6.0,
   cations: { sodium: 0, calcium: 0, magnesium: 0, potassium: 0, ammonium: 0, strontium: 0, barium: 0 },
   anions: { chloride: 0, sulfate: 0, bicarbonate: 0, carbonate: 0, fluoride: 0, nitrate: 0, phosphate: 0, bromide: 0 },
   neutrals: { silica: 0, boron: 0, carbonDioxide: 0 }
-}
-      // ADD COMMA AND NEW SECTION RIGHT HERE ↓
-,
-chemicalDosing: {
-  antiscalant: {
-    enabled: false,
-    type: 'Na6P6O18',
-    dosage: 2.0,
-  },
-  acidDosing: {
-    enabled: false,
-    type: 'HCl',
-    targetPH: 6.5,
-    dosage: 0,
-  },
-  baseDosing: {
-    enabled: false,
-    type: 'NaOH (30)',
-    targetPH: 8.0,
-    dosage: 0,
-  },
-  coagulant: {
-    enabled: false,
-    type: 'FeCl3',
-    dosage: 5.0,
-  }
 }
     });
 
@@ -1344,23 +1078,7 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
             },
           });
         }
-        // ADD THE CHEMICAL ANALYSIS RIGHT BEFORE setResults ↓
-        // Chemical analysis
-        const saturationRatios = calculateSaturationRatios(
-          inputs.waterAnalysis, 
-          inputs.recoveryTarget, 
-          inputs.temperature
-        );
-
-        const scalingWarnings = generateScalingWarnings(saturationRatios);
-        const lsiResults = calculateLSI(inputs.waterAnalysis, inputs.temperature);
-        const chemicalResults = calculateChemicalResults(
-          inputs.waterAnalysis,
-          inputs.feedFlow,
-          inputs.chemicalDosing || {},
-          saturationRatios
-        );
-// ↑ ADD THE CHEMICAL ANALYSIS UP TO HERE
+        
         // Update the results state
         setResults({
           elementResults: formattedElementResults,
@@ -1378,15 +1096,6 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
             feedPressure: parseFloat(bestFeedPressure.toFixed(1)),
             averageNDP: parseFloat(bestResults.averageNDP.toFixed(1)),
           },
-          // ADD THE NEW SECTIONS RIGHT HERE ↓
-          scalingAnalysis: {
-            saturationRatios: saturationRatios,
-            warnings: scalingWarnings,
-            LSI: lsiResults.LSI,
-            pHs: lsiResults.pHs
-          },
-          chemicalResults: chemicalResults
-          // ↑ ADD THE NEW SECTIONS UP TO HERE
         });
       }
       
@@ -1644,25 +1353,7 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
             {/* Water Analysis Section */}
 <div className="bg-gray-50 p-4 rounded-lg mb-4">
   <h4 className="text-md font-semibold text-blue-700 mb-3">Water Analysis (mg/L)</h4>
-  {/* ADD THE pH INPUT RIGHT HERE ↓ */}
-  <div className="space-y-2 mb-4 p-3 bg-blue-50 rounded border border-blue-200">
-    <label className="block text-sm font-medium text-gray-700">
-      pH (Critical for scaling calculations)
-    </label>
-    <input
-      type="number"
-      value={inputs.waterAnalysis.pH || 7.0}
-      onChange={(e) => setInputs(prev => ({
-        ...prev,
-        waterAnalysis: { ...prev.waterAnalysis, pH: parseFloat(e.target.value) || 7.0 }
-      }))}
-      className="w-full p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500"
-      step="0.1"
-      min="1"
-      max="14"
-    />
-  </div>
-  {/* ↑ ADD THE pH INPUT UP TO HERE */}
+  
   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
     {/* Cations */}
     <div>
@@ -1773,25 +1464,6 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
     </div>
   </div>
 </div>
-            {/* ADD THE CHEMICAL DOSING UI RIGHT HERE ↓ */}
-{/* Chemical Dosing Section */}
-<div className="bg-yellow-50 p-4 rounded-lg mb-4 border border-yellow-200">
-  <h4 className="text-md font-semibold text-blue-700 mb-3">💧 Chemical Dosing</h4>
-  
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-    {/* Antiscalant */}
-    <div className="bg-white p-3 rounded border">
-      {/* ... antiscalant UI code */}
-    </div>
-    
-    {/* Acid Dosing */}
-    <div className="bg-white p-3 rounded border">
-      {/* ... acid dosing UI code */} 
-    </div>
-  </div>
-</div>
-{/* ↑ ADD THE CHEMICAL DOSING UI UP TO HERE */}
-            
             {/* Element Type Selection */}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700">
@@ -1979,29 +1651,6 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
       </div>
 
       <div className="mt-8 grid grid-cols-1 gap-8">
-         {/* ADD ALL THE RESULTS DISPLAY RIGHT HERE ↓ */}
-        
-        {/* Scaling Warnings */}
-        {results.scalingAnalysis && results.scalingAnalysis.warnings.length > 0 && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-           {/* ... scaling warnings UI */}
-          </div>
-        )}
-
-        {/* Chemical Results */}
-        {results.chemicalResults && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-            {/* ... chemical results UI */}
-          </div>
-        )}
-
-        {/* Scaling Analysis Details */}
-        {results.scalingAnalysis && (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-            {/* ... scaling analysis UI */}
-          </div>
-        )}
-        {/* ↑ ADD ALL THE RESULTS DISPLAY UP TO HERE */}
         {/* Performance Graphs */}
         <div className="bg-gray-50 p-6 rounded-lg">
           <h3 className="text-lg font-semibold text-blue-700 mb-4">
