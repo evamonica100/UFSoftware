@@ -1605,7 +1605,7 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
             {/* Water Analysis Section */}
 <div className="bg-gray-50 p-4 rounded-lg mb-4">
   <h4 className="text-md font-semibold text-blue-700 mb-3">Water Analysis (mg/L)</h4>
-  // ADD THE pH INPUT RIGHT HERE ↓
+  {/* ADD THE pH INPUT RIGHT HERE ↓ */}
   <div className="space-y-2 mb-4 p-3 bg-blue-50 rounded border border-blue-200">
     <label className="block text-sm font-medium text-gray-700">
       pH (Critical for scaling calculations)
@@ -1623,7 +1623,7 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
       max="14"
     />
   </div>
-  // ↑ ADD THE pH INPUT UP TO HERE
+  {/* ↑ ADD THE pH INPUT UP TO HERE */}
   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
     {/* Cations */}
     <div>
@@ -1734,7 +1734,7 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
     </div>
   </div>
 </div>
-            // ADD THE CHEMICAL DOSING UI RIGHT HERE ↓
+            {/* ADD THE CHEMICAL DOSING UI RIGHT HERE ↓ */}
 {/* Chemical Dosing Section */}
 <div className="bg-yellow-50 p-4 rounded-lg mb-4 border border-yellow-200">
   <h4 className="text-md font-semibold text-blue-700 mb-3">💧 Chemical Dosing</h4>
@@ -1742,16 +1742,16 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
     {/* Antiscalant */}
     <div className="bg-white p-3 rounded border">
-      // ... antiscalant UI code
+      {/* ... antiscalant UI code */}
     </div>
     
     {/* Acid Dosing */}
     <div className="bg-white p-3 rounded border">
-      // ... acid dosing UI code  
+      {/* ... acid dosing UI code */} 
     </div>
   </div>
 </div>
-// ↑ ADD THE CHEMICAL DOSING UI UP TO HERE
+{/* ↑ ADD THE CHEMICAL DOSING UI UP TO HERE */}
             
             {/* Element Type Selection */}
             <div className="space-y-2">
@@ -1940,29 +1940,29 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
       </div>
 
       <div className="mt-8 grid grid-cols-1 gap-8">
-         // ADD ALL THE RESULTS DISPLAY RIGHT HERE ↓
+         {/* ADD ALL THE RESULTS DISPLAY RIGHT HERE ↓ */}
         
         {/* Scaling Warnings */}
         {results.scalingAnalysis && results.scalingAnalysis.warnings.length > 0 && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-            // ... scaling warnings UI
+           {/* ... scaling warnings UI */}
           </div>
         )}
 
         {/* Chemical Results */}
         {results.chemicalResults && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-            // ... chemical results UI
+            {/* ... chemical results UI */}
           </div>
         )}
 
         {/* Scaling Analysis Details */}
         {results.scalingAnalysis && (
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-            // ... scaling analysis UI
+            {/* ... scaling analysis UI */}
           </div>
         )}
-        // ↑ ADD ALL THE RESULTS DISPLAY UP TO HERE
+        {/* ↑ ADD ALL THE RESULTS DISPLAY UP TO HERE */}
         {/* Performance Graphs */}
         <div className="bg-gray-50 p-6 rounded-lg">
           <h3 className="text-lg font-semibold text-blue-700 mb-4">
