@@ -324,31 +324,174 @@ const ionData = {
   // Van't Hoff equation: π = 1.12 × (273 + T) × Σmj
   return 1.12 * (273 + temperature) * totalMolality;
 };
-  // ADD ALL THE NEW CHEMICAL FUNCTIONS RIGHT HERE ↓
 // Calculate ionic strength for activity coefficients
 const calculateIonicStrength = (waterAnalysis) => {
   const I = 0.5 * (
-    // ... function content
+    // Monovalent cations (Z=1, Z²=1)
+    (waterAnalysis.cations.sodium / 22990) * 1 +
+    (waterAnalysis.cations.potassium / 39100) * 1 +
+    
+    // Divalent cations (Z=2, Z²=4)
+    (waterAnalysis.cations.calcium / 40080) * 4 +
+    (waterAnalysis.cations.magnesium / 24310) * 4 +
+    (waterAnalysis.cations.barium / 137330) * 4 +
+    (waterAnalysis.cations.strontium / 87620) * 4 +
+    
+    // Monovalent anions (Z=-1, Z²=1)
+    (waterAnalysis.anions.chloride / 35450) * 1 +
+    (waterAnalysis.anions.bicarbonate / 61020) * 1 +
+    (waterAnalysis.anions.fluoride / 18998) * 1 +
+    
+    // Divalent anions (Z=-2, Z²=4)
+    (waterAnalysis.anions.sulfate / 96060) * 4 +
+    (waterAnalysis.anions.carbonate / 60010) * 4
   );
   return I;
 };
 
+// Calculate saturation ratios using WAVE formulas
 const calculateSaturationRatios = (waterAnalysis, recovery, temperature) => {
-  // ... function content
+  const concentrationFactor = 1 / (1 - recovery / 100);
+  const ionicStrength = calculateIonicStrength(waterAnalysis);
+  
+  // Simplified activity coefficient (Davies equation)
+  const activityCoeff = Math.pow(10, -0.5 * Math.sqrt(ionicStrength) / (1 + Math.sqrt(ionicStrength)));
+  
+  // Concentrated ion concentrations (mol/L)
+  const caConcMolar = (waterAnalysis.cations.calcium * concentrationFactor / 40080) * activityCoeff;
+  const so4ConcMolar = (waterAnalysis.anions.sulfate * concentrationFactor / 96060) * activityCoeff;
+  const baConcMolar = (waterAnalysis.cations.barium * concentrationFactor / 137330) * activityCoeff;
+  const fConcMolar = (waterAnalysis.anions.fluoride * concentrationFactor / 18998) * activityCoeff;
+  
+  // Calculate CO3²- from HCO3- using pH
+  const hco3ConcMolar = (waterAnalysis.anions.bicarbonate * concentrationFactor / 61020) * activityCoeff;
+  const co3ConcMolar = hco3ConcMolar * Math.pow(10, waterAnalysis.pH - 10.33);
+  
+  // Temperature-corrected Ksp values
+  const tempK = temperature + 273.15;
+  const kspCaCO3 = scalingConstants.CaCO3.Ksp25 * Math.exp(scalingConstants.CaCO3.tempCoeff * (1/298.15 - 1/tempK));
+  const kspCaSO4 = scalingConstants.CaSO4.Ksp25 * Math.exp(scalingConstants.CaSO4.tempCoeff * (1/298.15 - 1/tempK));
+  const kspBaSO4 = scalingConstants.BaSO4.Ksp25;
+  const kspCaF2 = scalingConstants.CaF2.Ksp25;
+  
+  // Calculate saturation ratios
+  const ratios = {
+    CaCO3: (caConcMolar * co3ConcMolar) / kspCaCO3,
+    CaSO4: (caConcMolar * so4ConcMolar) / kspCaSO4,
+    BaSO4: (baConcMolar * so4ConcMolar) / kspBaSO4,
+    CaF2: (caConcMolar * Math.pow(fConcMolar, 2)) / kspCaF2
+  };
+  
+  return ratios;
 };
 
+// Generate scaling warnings like WAVE
 const generateScalingWarnings = (saturationRatios) => {
-  // ... function content
+  const warnings = [];
+  
+  Object.entries(saturationRatios).forEach(([compound, ratio]) => {
+    if (ratio > 1.0) {
+      warnings.push({
+        compound: compound,
+        saturation: `${(ratio * 100).toFixed(1)}%`,
+        pass: 1,
+        message: `${compound} (% saturation) > 100`
+      });
+    }
+  });
+  
+  // Add general antiscalant recommendation if any scaling detected
+  if (warnings.length > 0) {
+    warnings.push({
+      compound: "General",
+      saturation: "",
+      pass: 1,
+      message: "Anti-scalants may be required. Consult your anti-scalant manufacturer for dosing and maximum allowable system recovery."
+    });
+  }
+  
+  return warnings;
 };
 
+// Calculate LSI using WAVE formula
 const calculateLSI = (waterAnalysis, temperature) => {
-  // ... function content
+  const pH = waterAnalysis.pH;
+  const TDS = Object.values(waterAnalysis.cations).reduce((a, b) => a + b, 0) + 
+             Object.values(waterAnalysis.anions).reduce((a, b) => a + b, 0);
+  const tempK = temperature + 273.15;
+  
+  // WAVE formula components
+  const A = (Math.log10(TDS) - 1) / 10;
+  const B = -13.12 * Math.log10(tempK) + 34.55;
+  
+  // Convert Ca mg/L to CaCO3 equivalent
+  const calciumAsCaCO3 = waterAnalysis.cations.calcium * 2.5;
+  const C = Math.log10(calciumAsCaCO3) - 0.4;
+  const D = Math.log10(waterAnalysis.anions.bicarbonate);
+  
+  const pHs = (9.3 + A + B) - (C + D);
+  const LSI = pH - pHs;
+  
+  return { LSI, pHs };
 };
 
+// Calculate chemical dosages and costs
 const calculateChemicalResults = (waterAnalysis, feedFlow, chemicalDosing, saturationRatios) => {
-  // ... function content
+  const results = {
+    dailyConsumption: {},
+    dailyCosts: {},
+    adjustedWater: { ...waterAnalysis },
+    recommendations: []
+  };
+  
+  let totalDailyCost = 0;
+  
+  // Antiscalant calculation
+  if (chemicalDosing.antiscalant && chemicalDosing.antiscalant.enabled) {
+    const dosageMgL = chemicalDosing.antiscalant.dosage;
+    const kgPerDay = feedFlow * 24 * dosageMgL / 1000000;
+    const chemical = chemicalDatabase[chemicalDosing.antiscalant.type];
+    
+    results.dailyConsumption.antiscalant = kgPerDay;
+    results.dailyCosts.antiscalant = kgPerDay * chemical.price;
+    totalDailyCost += results.dailyCosts.antiscalant;
+  }
+  
+  // Acid dosing calculation (simplified)
+  if (chemicalDosing.acidDosing && chemicalDosing.acidDosing.enabled) {
+    const currentPH = waterAnalysis.pH;
+    const targetPH = chemicalDosing.acidDosing.targetPH;
+    const phDifference = currentPH - targetPH;
+    
+    if (phDifference > 0) {
+      // Simplified: ~50 mg/L HCl per pH unit
+      const acidDosageMgL = phDifference * 50;
+      const kgPerDay = feedFlow * 24 * acidDosageMgL / 1000000;
+      const chemical = chemicalDatabase[chemicalDosing.acidDosing.type];
+      
+      results.dailyConsumption.acid = kgPerDay;
+      results.dailyCosts.acid = kgPerDay * chemical.price;
+      totalDailyCost += results.dailyCosts.acid;
+      
+      // Update pH after acid addition
+      results.adjustedWater.pH = targetPH;
+    }
+  }
+  
+  // Auto-recommendations based on scaling
+  if (Object.keys(saturationRatios).length > 0) {
+    if (Math.max(...Object.values(saturationRatios)) > 0.8 && (!chemicalDosing.antiscalant || !chemicalDosing.antiscalant.enabled)) {
+      results.recommendations.push("Enable antiscalant dosing due to scaling risk");
+    }
+    
+    if (saturationRatios.CaCO3 > 1.0 && (!chemicalDosing.acidDosing || !chemicalDosing.acidDosing.enabled)) {
+      results.recommendations.push("Consider acid dosing to reduce CaCO3 scaling");
+    }
+  }
+  
+  results.totalDailyCost = totalDailyCost;
+  return results;
 };
-// ↑ ADD ALL THE CHEMICAL FUNCTIONS UP TO HERE
   
   // Helper function to calculate concentration polarization factor
   const calculatePolarizationFactor = (recovery: number) => {
