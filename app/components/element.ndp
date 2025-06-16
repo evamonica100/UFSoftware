@@ -792,10 +792,19 @@ const feedOsmoticPressure = initialFeedOsmoticPressure * concentrationRatio;
               
               // Calculate concentration polarization
               // For the first iteration, use an estimate based on target recovery
-   const averageElementRecovery = 1 - Math.pow(1 - targetRecovery, 1/totalElements);
+  const averageElementRecovery = 1 - Math.pow(1 - targetRecovery, 1/totalElements);
+
+// Calculate initial NDP and flux first
+const initialEffectiveOsmoticPressure = feedOsmoticPressure * 1.2; // Use default polarization
+const permatePressure = 14.7; // psi (atmospheric pressure)
+const permeateOsmoticPressure = calculatePermeateOsmoticPressure(feedOsmoticPressure, selectedMembraneProp.rejectionNominal);
+const initialNdp = Math.max(0, pvFeedPressure - initialEffectiveOsmoticPressure - permatePressure - permeateOsmoticPressure);
+const flux = calculateFlux(initialNdp, selectedMembraneProp.waterPermeability, tcf, foulingFactor);
+
+// Now calculate polarization factor with flux
 const polarizationFactor = calculatePolarizationFactor(
   element.recovery > 0 ? element.recovery : averageElementRecovery,
-  flux || 10, // Use calculated flux or default
+  flux || 10, // Now flux is defined
   inputs.crossFlowVelocity || 0.2,
   inputs.temperature,
   pvFeedTDS
@@ -804,6 +813,9 @@ const polarizationFactor = calculatePolarizationFactor(
               
               // Calculate effective osmotic pressure with CP
               const effectiveOsmoticPressure = feedOsmoticPressure * polarizationFactor;
+              const ndp = Math.max(0, pvFeedPressure - effectiveOsmoticPressure - permatePressure - permeateOsmoticPressure);
+element.ndp = ndp;
+element.flux = flux;
               
               // Use constant permeate pressure (atmospheric pressure)
               const permatePressure = 14.7; // psi (atmospheric pressure)
