@@ -923,10 +923,22 @@ const permeateTDS = calculatePermeateTDS(
             permeateTDS: avgPermeateTDS,
             recovery: actualRecovery * 100,
             averageFlux: (totalPermeateFlow * M3H_TO_GPD) / (totalElements * selectedMembraneProp.area), // FIXED
-averageNDP: feedPressure - initialFeedOsmoticPressure * calculatePolarizationFactor(actualRecovery / 2),
+averageNDP: feedPressure - initialFeedOsmoticPressure * calculatePolarizationFactor(
+  actualRecovery / 2,
+  bestResults?.averageFlux || 15, // Use calculated flux or default
+  inputs.crossFlowVelocity || 0.2,
+  inputs.temperature,
+  inputs.feedTDS
+),
 limitingRecovery: calculateLimitingRecovery( // FIXED
   initialFeedOsmoticPressure,
-  calculatePolarizationFactor(actualRecovery / 2),
+  calculatePolarizationFactor(
+  actualRecovery / 2,
+  bestResults?.averageFlux || 15, // Use calculated flux or default
+  inputs.crossFlowVelocity || 0.2,
+  inputs.temperature,
+  inputs.feedTDS
+),
   0.997, // Average system rejection
   feedPressure,
   20,    // Average pressure drop estimate
