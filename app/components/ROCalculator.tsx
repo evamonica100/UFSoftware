@@ -21,6 +21,7 @@ const [inputs, setInputs] = useState({
   recyclePercent: 0,
   flowFactor: 0.85,
   elementType: 'ZEKINDO SW-400 HR',
+  crossFlowVelocity: 0.2,
 // ADDITION 4: Option for uniform elements per vessel
 useUniformElements: true,
 elementsPerVessel: 7,
@@ -162,56 +163,62 @@ waterAnalysis: {
 'ZEKINDO SW-4040': {
   area: 82,
   waterPermeability: 0.0189,
-  saltPermeability: 0.00005,  // ← FIXED
+  saltPermeability: 0.0000847,
   rejectionNominal: 0.996,
   maxFlux: 16,
   maxFeedFlowRate: 16,
-  maxPressureDrop: 15
+  maxPressureDrop: 15,
+  maxRecoveryPerElement: 0.12
 },
 'ZEKINDO SW-400 HR': {
   area: 400,
   waterPermeability: 0.0227,
-  saltPermeability: 0.00005,  // ← FIXED
+  saltPermeability: 0.0000847,
   rejectionNominal: 0.997,
   maxFlux: 16,
   maxFeedFlowRate: 16,
-  maxPressureDrop: 15
+  maxPressureDrop: 15,
+  maxRecoveryPerElement: 0.12
 },
 'ZEKINDO SW-440 HR': {
   area: 440,
-  waterPermeability: 0.0224,  // FIXED: Calculated from specs
-  saltPermeability: 0.0511,   // FIXED: Calculated from specs
+  waterPermeability: 0.0224,
+  saltPermeability: 0.0000924,
   rejectionNominal: 0.997,
   maxFlux: 16,
   maxFeedFlowRate: 16,
-  maxPressureDrop: 15
+  maxPressureDrop: 15,
+  maxRecoveryPerElement: 0.12
 },
 'ZEKINDO SW-4040 HRLE': {
   area: 82,
-  waterPermeability: 0.0232,  // FIXED: Calculated from specs
-  saltPermeability: 0.0531,   // FIXED: Calculated from specs
+  waterPermeability: 0.0232,
+  saltPermeability: 0.0000978,
   rejectionNominal: 0.996,
   maxFlux: 16,
   maxFeedFlowRate: 16,
-  maxPressureDrop: 15
+  maxPressureDrop: 15,
+  maxRecoveryPerElement: 0.12
 },
 'ZEKINDO SW-400 HRLE': {
   area: 400,
-  waterPermeability: 0.0246,  // FIXED: Calculated from specs
-  saltPermeability: 0.0563,   // FIXED: Calculated from specs
+  waterPermeability: 0.0246,
+  saltPermeability: 0.0001038,
   rejectionNominal: 0.997,
   maxFlux: 16,
   maxFeedFlowRate: 16,
-  maxPressureDrop: 15
+  maxPressureDrop: 15,
+  maxRecoveryPerElement: 0.12
 },
 'ZEKINDO SW-440 HRLE': {
   area: 440,
-  waterPermeability: 0.0245,  // FIXED: Calculated from specs
-  saltPermeability: 0.0558,   // FIXED: Calculated from specs
+  waterPermeability: 0.0245,
+  saltPermeability: 0.0001035,
   rejectionNominal: 0.997,
   maxFlux: 16,
   maxFeedFlowRate: 16,
-  maxPressureDrop: 15
+  maxPressureDrop: 15,
+  maxRecoveryPerElement: 0.12
 }
   };
 
@@ -248,55 +255,62 @@ waterAnalysis: {
 
 // Calculate feedwater osmotic pressure using ion-specific approach
 const calculateOsmoticPressure = (waterAnalysis, temperature) => {
-  // ADDITION 6: Updated molecular weights including new ions
-const ionData = {
-  // Cations
-  sodium: { mw: 22.99 },
-  calcium: { mw: 40.08 },
-  magnesium: { mw: 24.31 },
-  potassium: { mw: 39.10 },
-  ammonium: { mw: 18.04 },      // NH4+ (NEW)
-  strontium: { mw: 87.62 },     // Sr2+ (NEW)
-  barium: { mw: 137.33 },       // Ba2+ (NEW)
-  // Anions
-  chloride: { mw: 35.45 },
-  sulfate: { mw: 96.06 },
-  bicarbonate: { mw: 61.02 },
-  carbonate: { mw: 60.01 },
-  fluoride: { mw: 18.998 },     // F- (NEW)
-  nitrate: { mw: 62.004 },      // NO3- (NEW)
-  phosphate: { mw: 94.97 },     // PO4 3- (NEW)
-  bromide: { mw: 79.904 }       // Br- (NEW)
-};
+  // Enhanced ion data with activity coefficients
+  const ionData = {
+    // Cations [molecular weight, activity coefficient]
+    sodium: { mw: 22.99, gamma: 0.78 },
+    calcium: { mw: 40.08, gamma: 0.27 },
+    magnesium: { mw: 24.31, gamma: 0.24 },
+    potassium: { mw: 39.10, gamma: 0.77 },
+    ammonium: { mw: 18.04, gamma: 0.78 },
+    strontium: { mw: 87.62, gamma: 0.27 },
+    barium: { mw: 137.33, gamma: 0.25 },
+    // Anions
+    chloride: { mw: 35.45, gamma: 0.76 },
+    sulfate: { mw: 96.06, gamma: 0.12 },
+    bicarbonate: { mw: 61.02, gamma: 0.67 },
+    carbonate: { mw: 60.01, gamma: 0.20 },
+    fluoride: { mw: 18.998, gamma: 0.75 },
+    nitrate: { mw: 62.004, gamma: 0.74 },
+    phosphate: { mw: 94.97, gamma: 0.09 },
+    bromide: { mw: 79.904, gamma: 0.76 }
+  };
   
-  let totalMolality = 0;
+  let totalOsmoticCoeff = 0;
   
-  // Calculate molality for cations
-  Object.keys(waterAnalysis.cations).forEach(ion => {
-    const concentration = waterAnalysis.cations[ion]; // mg/L
-    if (concentration > 0 && ionData[ion]) {
-      const molality = (concentration / 1000) / ionData[ion].mw; // mol/kg
-      totalMolality += molality;
-    }
+  // Calculate total molality with activity corrections
+  ['cations', 'anions'].forEach(ionType => {
+    Object.keys(waterAnalysis[ionType]).forEach(ion => {
+      const concentration = waterAnalysis[ionType][ion]; // mg/L
+      if (concentration > 0 && ionData[ion]) {
+        const molality = (concentration / 1000) / ionData[ion].mw; // mol/kg
+        totalOsmoticCoeff += molality * ionData[ion].gamma;
+      }
+    });
   });
   
-  // Calculate molality for anions
-  Object.keys(waterAnalysis.anions).forEach(ion => {
-    const concentration = waterAnalysis.anions[ion]; // mg/L
-    if (concentration > 0 && ionData[ion]) {
-      const molality = (concentration / 1000) / ionData[ion].mw; // mol/kg
-      totalMolality += molality;
-    }
-  });
-  
-  // Van't Hoff equation: π = 1.12 × (273 + T) × Σmj
-  return 1.12 * (273 + temperature) * totalMolality;
+  // Enhanced Van't Hoff equation with osmotic coefficient
+  const osmoticallyActive = totalOsmoticCoeff * 1.2; // Osmotic coefficient ~1.2 for seawater
+  return 1.12 * (273 + temperature) * osmoticallyActive;
 };
   
   // Helper function to calculate concentration polarization factor
-  const calculatePolarizationFactor = (recovery: number) => {
-    return Math.exp(0.7 * recovery);
-  };
+const calculatePolarizationFactor = (recovery, flux, crossFlowVelocity = 0.2, temperature = 25, feedTDS = 32000) => {
+  // Enhanced polarization calculation
+  const kinematicViscosity = 1.0e-6 * Math.exp(1.1709 * (20 - temperature) / (temperature + 273));
+  const diffusivity = 1.5e-9 * (293 / (273 + temperature)) * Math.pow(1000 / (1000 + feedTDS), 0.1);
+  
+  const hydraulicDiameter = 0.002; // 2 mm typical for spiral wound
+  const reynoldsNumber = crossFlowVelocity * hydraulicDiameter / kinematicViscosity;
+  const schmidtNumber = kinematicViscosity / diffusivity;
+  const sherwoodNumber = 0.04 * Math.pow(reynoldsNumber, 0.75) * Math.pow(schmidtNumber, 0.33);
+  
+  const massTransferCoeff = sherwoodNumber * diffusivity / hydraulicDiameter;
+  const waterFluxMs = flux * 1.157e-8; // Convert GFD to m/s
+  const dimensionlessFlux = waterFluxMs / massTransferCoeff;
+  
+  return Math.exp(Math.min(dimensionlessFlux, 2.0)); // Cap at e^2 ≈ 7.4
+};
 
   // Calculate pressure drop in element based on flow rate
   const calculateElementPressureDrop = (flowRate: number) => {
@@ -384,6 +398,7 @@ const calculatePermeateOsmoticPressure = (feedOsmoticPressure, elementRejection)
       convergenceTolerance: 0.001,
       recyclePercent: 0,
       flowFactor: 0,
+      crossFlowVelocity: 0,
       elementType: '',
 // ADDITION 4: Add uniform elements option to reset
 useUniformElements: true,
@@ -777,10 +792,14 @@ const feedOsmoticPressure = initialFeedOsmoticPressure * concentrationRatio;
               
               // Calculate concentration polarization
               // For the first iteration, use an estimate based on target recovery
-              const averageElementRecovery = 1 - Math.pow(1 - targetRecovery, 1/totalElements);
-              const polarizationFactor = calculatePolarizationFactor(
-                element.recovery > 0 ? element.recovery : averageElementRecovery
-              );
+   const averageElementRecovery = 1 - Math.pow(1 - targetRecovery, 1/totalElements);
+const polarizationFactor = calculatePolarizationFactor(
+  element.recovery > 0 ? element.recovery : averageElementRecovery,
+  flux || 10, // Use calculated flux or default
+  inputs.crossFlowVelocity || 0.2,
+  inputs.temperature,
+  pvFeedTDS
+);
               element.polarization = polarizationFactor;
               
               // Calculate effective osmotic pressure with CP
@@ -807,9 +826,10 @@ const ndp = Math.max(0, pvFeedPressure - effectiveOsmoticPressure - permatePress
               element.permeateFlow = permeateFlowM3h;
               
               // Calculate recovery for this element
-              // FIXED: Realistic element recovery limits
-const maxElementRecovery = elementType.includes('SW') ? 0.12 : 0.15; // 12% for SW, 15% for BW
-const elementRecovery = Math.min(maxElementRecovery, permeateFlowM3h / pvFeedFlow);
+// Enhanced element recovery limits with membrane-specific limits
+const membraneMaxRecovery = selectedMembraneProp.maxRecoveryPerElement || 0.12;
+const calculatedRecovery = pvFeedFlow > 0 ? permeateFlowM3h / pvFeedFlow : 0;
+const elementRecovery = Math.min(membraneMaxRecovery, calculatedRecovery);
               element.recovery = elementRecovery;
               
               // Calculate concentrate flow
@@ -1309,6 +1329,7 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
               "recoveryTarget",
               "recyclePercent",
               "flowFactor",
+  "crossFlowVelocity",
             ].map((key) => {
               const unitMap = {
                 "temperature": "°C",
@@ -1318,6 +1339,7 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
                 "recoveryTarget": "%",
                 "recyclePercent": "%",
                 "flowFactor": "",
+                "crossFlowVelocity" ? "m/s",
               };
               
               return (
@@ -1326,6 +1348,7 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
                     {key === "recoveryTarget" ? "Target Recovery" : 
                      key === "recyclePercent" ? "Recycle Percent" :
                      key === "flowFactor" ? "Flow Factor" :
+                    key === "crossFlowVelocity" ? "Cross-Flow Velocity" :
                      key === "temperature" ? "Temperature" :
                      key === "feedFlow" ? "Feed Flow" :
                      key === "feedTDS" ? "Feed TDS" :
