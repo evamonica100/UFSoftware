@@ -809,28 +809,15 @@ const polarizationFactor = calculatePolarizationFactor(
   inputs.temperature,
   pvFeedTDS
 );
-              element.polarization = polarizationFactor;
-              
-              // Calculate effective osmotic pressure with CP
-              const effectiveOsmoticPressure = feedOsmoticPressure * polarizationFactor;
-              const ndp = Math.max(0, pvFeedPressure - effectiveOsmoticPressure - permatePressure - permeateOsmoticPressure);
+element.polarization = polarizationFactor;
+
+// Calculate effective osmotic pressure with CP
+const effectiveOsmoticPressure = feedOsmoticPressure * polarizationFactor;
+
+// Calculate final NDP with correct polarization
+const ndp = Math.max(0, pvFeedPressure - effectiveOsmoticPressure - permatePressure - permeateOsmoticPressure);
 element.ndp = ndp;
 element.flux = flux;
-              
-              // Use constant permeate pressure (atmospheric pressure)
-              const permatePressure = 14.7; // psi (atmospheric pressure)
-              
-              // Calculate net driving pressure
-             // REVISION 1: Enhanced NDP calculation with permeate-side osmotic pressure
-const permeateOsmoticPressure = calculatePermeateOsmoticPressure(feedOsmoticPressure, selectedMembraneProp.rejectionNominal);
-
-// NDP = Feed Pressure - Feed Osmotic Pressure - Permeate Pressure - Permeate Osmotic Pressure
-const ndp = Math.max(0, pvFeedPressure - effectiveOsmoticPressure - permatePressure - permeateOsmoticPressure);
-              element.ndp = ndp;
-              
-              // Calculate water flux through membrane
-              const flux = calculateFlux(ndp, selectedMembraneProp.waterPermeability, tcf, foulingFactor);
-              element.flux = flux;
               
               // Calculate permeate flow based on flux and membrane area
               const permeateFlowGpd = flux * selectedMembraneProp.area * flowFactor;
