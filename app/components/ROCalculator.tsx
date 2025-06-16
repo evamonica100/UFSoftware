@@ -104,6 +104,7 @@ waterAnalysis: {
     // Original membranes
     'SW30XLE-440i': {
       area: 440, // ft²
+       diameter: 4,
       waterPermeability: 0.125, // gfd/psi at 25°C
       saltPermeability: 0.00005, // gfd
       rejectionNominal: 0.997, // fraction
@@ -113,6 +114,7 @@ waterAnalysis: {
     },
     'SW30HRLE-440i': {
       area: 440,
+       diameter: 4,
       waterPermeability: 0.11,
       saltPermeability: 0.00002,
       rejectionNominal: 0.9985,
@@ -124,6 +126,7 @@ waterAnalysis: {
     // ZEKINDO Brackish Water (BW) membranes
     'ZEKINDO BW-4040': {
       area: 82, // ft²
+       diameter: 4,
       waterPermeability: 0.13, // gfd/psi at 25°C (derived from specs)
       saltPermeability: 0.00007, // gfd (estimated based on rejection)
       rejectionNominal: 0.9965, // fraction (from specs)
@@ -133,6 +136,7 @@ waterAnalysis: {
     },
     'ZEKINDO BW-365': {
       area: 365, // ft²
+      diameter: 8, 
       waterPermeability: 0.128, // gfd/psi (derived from specs)
       saltPermeability: 0.00007, // gfd
       rejectionNominal: 0.9965, // fraction
@@ -142,6 +146,7 @@ waterAnalysis: {
     },
     'ZEKINDO BW-400': {
       area: 400, // ft²
+      diameter: 8, 
       waterPermeability: 0.129, // gfd/psi
       saltPermeability: 0.00006, // gfd
       rejectionNominal: 0.997, // fraction
@@ -151,6 +156,7 @@ waterAnalysis: {
     },
     'ZEKINDO BW-400 FR': {
       area: 400, // ft²
+      diameter: 8, 
       waterPermeability: 0.129, // gfd/psi
       saltPermeability: 0.00006, // gfd
       rejectionNominal: 0.997, // fraction
@@ -162,6 +168,7 @@ waterAnalysis: {
     // ZEKINDO Sea Water (SW) membranes
 'ZEKINDO SW-4040': {
   area: 82,
+  diameter: 8, 
   waterPermeability: 0.0189,
   saltPermeability: 0.0000847,
   rejectionNominal: 0.996,
@@ -172,6 +179,7 @@ waterAnalysis: {
 },
 'ZEKINDO SW-400 HR': {
   area: 400,
+  diameter: 8, 
   waterPermeability: 0.0227,
   saltPermeability: 0.0000847,
   rejectionNominal: 0.997,
@@ -182,6 +190,7 @@ waterAnalysis: {
 },
 'ZEKINDO SW-440 HR': {
   area: 440,
+  diameter: 8, 
   waterPermeability: 0.0224,
   saltPermeability: 0.0000924,
   rejectionNominal: 0.997,
@@ -192,6 +201,7 @@ waterAnalysis: {
 },
 'ZEKINDO SW-4040 HRLE': {
   area: 82,
+  diameter: 8, 
   waterPermeability: 0.0232,
   saltPermeability: 0.0000978,
   rejectionNominal: 0.996,
@@ -202,6 +212,7 @@ waterAnalysis: {
 },
 'ZEKINDO SW-400 HRLE': {
   area: 400,
+  diameter: 8, 
   waterPermeability: 0.0246,
   saltPermeability: 0.0001038,
   rejectionNominal: 0.997,
@@ -212,6 +223,7 @@ waterAnalysis: {
 },
 'ZEKINDO SW-440 HRLE': {
   area: 440,
+  diameter: 8, 
   waterPermeability: 0.0245,
   saltPermeability: 0.0001035,
   rejectionNominal: 0.997,
@@ -313,12 +325,31 @@ const calculatePolarizationFactor = (recovery, flux, crossFlowVelocity = 0.2, te
 };
 
   // Calculate pressure drop in element based on flow rate
-  const calculateElementPressureDrop = (flowRate: number) => {
-    // Convert m³/h to gpm for calculation
-    const flowGpm = flowRate * M3H_TO_GPM;
-    // ΔPfc = 0.01 ηfc¹·⁷
-    return 0.01 * Math.pow(flowGpm, 1.7);
-  };
+const calculateElementPressureDrop = (flowRate: number, elementDiameter: number = 8) => {
+  // Convert m³/h to gpm for calculation
+  const flowGpm = flowRate * M3H_TO_GPM;
+  
+  let pressureDrop;
+  
+  if (elementDiameter === 4) {
+    // 4-inch elements: IntHsPsiDrp = 6.7 + 7.52E-06 * f^4 + 0.0005 * f^3 + 0.00625 * f^2 + 0.553 * f + 1.73
+    pressureDrop = 6.7 + 
+                   7.52e-6 * Math.pow(flowGpm, 4) + 
+                   0.0005 * Math.pow(flowGpm, 3) + 
+                   0.00625 * Math.pow(flowGpm, 2) + 
+                   0.553 * flowGpm + 
+                   1.73;
+  } else {
+    // 8-inch elements: IntHsPsiDrp = -3.305E-07 * f^4 + 0.000396 * f^3 + 0.0227 * f^2 + 0.00172 * f + 1.14
+    pressureDrop = -3.305e-7 * Math.pow(flowGpm, 4) + 
+                   0.000396 * Math.pow(flowGpm, 3) + 
+                   0.0227 * Math.pow(flowGpm, 2) + 
+                   0.00172 * flowGpm + 
+                   1.14;
+  }
+  
+  return Math.max(0, pressureDrop); // Ensure non-negative
+};
 
   // Calculate permeate flux based on net driving pressure
   const calculateFlux = (ndp: number, waterPermeability: number, tcf: number, ff: number) => {
@@ -621,6 +652,7 @@ waterAnalysis: {
       // Get element type from selected membrane
       const elementType = inputs.elementType || selectedMembrane.model;
       const selectedMembraneProp = membraneProperties[elementType] || membraneProperties['ZEKINDO SW-400 HR'];
+      const pressureDrop = calculateElementPressureDrop(pvFeedFlow, selectedMembraneProp.diameter);
       
       const tcf = calculateTCF(inputs.temperature);
 const initialFeedOsmoticPressure = calculateOsmoticPressure(
@@ -953,7 +985,7 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
   inputs.feedTDS
 ),
             concentrateOsmoticPressure: initialFeedOsmoticPressure / (1 - actualRecovery),
-            pressureDrops: [calculateElementPressureDrop(inputs.feedFlow), calculateElementPressureDrop(inputs.feedFlow * 0.7)],
+            pressureDrops: [calculateElementPressureDrop(inputs.feedFlow, selectedMembraneProp.diameter), calculateElementPressureDrop(inputs.feedFlow * 0.7, selectedMembraneProp.diameter)],
             feedOsmoticPressure: initialFeedOsmoticPressure
           };
         }
