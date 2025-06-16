@@ -1339,7 +1339,7 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
                 "recoveryTarget": "%",
                 "recyclePercent": "%",
                 "flowFactor": "",
-                "crossFlowVelocity" ? "m/s",
+                "crossFlowVelocity": "m/s",
               };
               
               return (
