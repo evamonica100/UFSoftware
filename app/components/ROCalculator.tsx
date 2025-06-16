@@ -945,7 +945,13 @@ limitingRecovery: calculateLimitingRecovery( // FIXED
   14.7   // Permeate pressure
 ) * 100,
 averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalElements) * 100, // FIXED
-            concentratePolarization: calculatePolarizationFactor(actualRecovery / totalElements),
+            concentratePolarization: calculatePolarizationFactor(
+  actualRecovery / totalElements,
+  bestResults?.averageFlux || 15, // Use calculated flux or default
+  inputs.crossFlowVelocity || 0.2,
+  inputs.temperature,
+  inputs.feedTDS
+),
             concentrateOsmoticPressure: initialFeedOsmoticPressure / (1 - actualRecovery),
             pressureDrops: [calculateElementPressureDrop(inputs.feedFlow), calculateElementPressureDrop(inputs.feedFlow * 0.7)],
             feedOsmoticPressure: initialFeedOsmoticPressure
