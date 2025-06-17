@@ -652,7 +652,6 @@ waterAnalysis: {
       // Get element type from selected membrane
       const elementType = inputs.elementType || selectedMembrane.model;
       const selectedMembraneProp = membraneProperties[elementType] || membraneProperties['ZEKINDO SW-400 HR'];
-      const pressureDrop = calculateElementPressureDrop(pvFeedFlow, selectedMembraneProp.diameter);
       
       const tcf = calculateTCF(inputs.temperature);
 const initialFeedOsmoticPressure = calculateOsmoticPressure(
