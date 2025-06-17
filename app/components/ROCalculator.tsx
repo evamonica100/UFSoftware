@@ -362,24 +362,25 @@ const calculateElementPressureDrop = (flowRate: number, elementDiameter: number 
 
 // FIXED: Simple rejection-based permeate TDS calculation
 const calculatePermeateTDS = (feedTDS, elementRejection, flux, saltPermeability, tcf, elementArea = null, permeateFlow = null, concentrateTDS = null, polarizationFactor = null) => {
-  // Use concentrate TDS and polarization factor for more accuracy
-  if (concentrateTDS && polarizationFactor) {
-    // Effective feed TDS at membrane surface (higher due to concentration polarization)
-    const effectiveFeedTDS = concentrateTDS * polarizationFactor;
+  // Use WAVE/Fortran approach: mass balance with salt permeability
+  if (flux > 0 && elementArea > 0 && saltPermeability > 0) {
+    // Salt flux through membrane = saltPermeability * area * TCF * driving force
+    const effectiveFeedTDS = feedTDS * (polarizationFactor || 1.0);
+    const saltFlux = saltPermeability * elementArea * tcf * effectiveFeedTDS; // mg/day
+    const waterFlux = flux * elementArea; // gfd
     
-    // Simple rejection formula: Permeate TDS = Feed TDS × (1 - Rejection)
-    const permeateTDS = effectiveFeedTDS * (1 - elementRejection);
-    
-    // Apply safety limits
-    return Math.max(10, Math.min(permeateTDS, feedTDS * 0.8)); // Min 10 mg/L, max 80% of feed
+    if (waterFlux > 0) {
+      const permeateTDS = (saltFlux / waterFlux) * 8.34; // Convert to mg/L
+      return Math.max(50, Math.min(permeateTDS, feedTDS * 0.5)); // More realistic limits
+    }
   }
   
-  // Fallback method using feed TDS
+  // Fallback to rejection method but with less optimistic rejection
+  const effectiveRejection = elementRejection * 0.95; // Reduce rejection by 5% to match WAVE
   const effectiveFeedTDS = feedTDS * (polarizationFactor || 1.0);
-  const permeateTDS = effectiveFeedTDS * (1 - elementRejection);
+  const permeateTDS = effectiveFeedTDS * (1 - effectiveRejection);
   
-  // Apply safety limits
-  return Math.max(10, Math.min(permeateTDS, feedTDS * 0.8));
+  return Math.max(50, Math.min(permeateTDS, feedTDS * 0.5)); // Higher minimum, lower maximum
 };
 
   // Calculate limiting system recovery using formula: YL = 1 - (πf × pf × R) / (Pf - ΔPfc - Pp)
@@ -682,15 +683,15 @@ const initialFeedOsmoticPressure = calculateOsmoticPressure(
       // Target recovery as fraction
       const targetRecovery = inputs.recoveryTarget / 100;
       
-      // Initial feed pressure guess - adjust based on membrane type and feed TDS
-      let feedPressure;
-      if (elementType.includes('SW')) {
-        // Seawater membranes need higher pressure
-        feedPressure = initialFeedOsmoticPressure * 2.2 + 300;
-      } else {
-        // Brackish water membranes
-        feedPressure = initialFeedOsmoticPressure * 2.0 + 80;
-      }
+// Initial feed pressure guess - use typical operating pressures like WAVE
+let feedPressure;
+if (elementType.includes('SW')) {
+  // Seawater membranes: typical WAVE pressure
+  feedPressure = 850; // ~58 bar, typical SWRO pressure
+} else {
+  // Brackish water membranes: typical WAVE pressure
+  feedPressure = 250; // ~17 bar, typical BWRO pressure
+}
       
       // Start with the estimated feed pressure from osmotic pressure calculation
       // Rather than using a user-specified feed pressure input
