@@ -437,18 +437,18 @@ const calculateTDSFromAnalysis = (waterAnalysis) => {
   let totalTDS = 0;
   
   // Sum all cations
-  Object.values(waterAnalysis.cations).forEach(value => {
-    totalTDS += value || 0;
+  Object.values(waterAnalysis.cations).forEach((value: number) => {
+    totalTDS += (value as number) || 0;
   });
   
   // Sum all anions
-  Object.values(waterAnalysis.anions).forEach(value => {
-    totalTDS += value || 0;
+  Object.values(waterAnalysis.anions).forEach((value: number) => {
+    totalTDS += (value as number) || 0;
   });
   
   // Sum neutrals
-  Object.values(waterAnalysis.neutrals).forEach(value => {
-    totalTDS += value || 0;
+  Object.values(waterAnalysis.neutrals).forEach((value: number) => {
+    totalTDS += (value as number) || 0;
   });
   
   return totalTDS;
@@ -659,6 +659,18 @@ waterAnalysis: {
   cations: { sodium: 0, calcium: 0, magnesium: 0, potassium: 0, ammonium: 0, strontium: 0, barium: 0 },
   anions: { chloride: 0, sulfate: 0, bicarbonate: 0, carbonate: 0, fluoride: 0, nitrate: 0, phosphate: 0, bromide: 0 },
   neutrals: { silica: 0, boron: 0, carbonDioxide: 0 }
+},
+      // ADD this missing scaling analysis reset section
+scalingAnalysis: {
+  feedPH: 0,
+  antiscalantDose: 0,
+  antiscalantType: 'phosphonate',
+  acidType: 'H2SO4',
+  targetPH: 6.5,
+  enableScalingLimits: true,
+  maxLSI: 0.5,
+  maxLSIWithAntiscalant: 2.0,
+  maxGypsumSaturation: 2.5,
 }
     });
 
