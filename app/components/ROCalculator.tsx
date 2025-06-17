@@ -2152,7 +2152,7 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
                 {results.systemResults.scalingAnalysis?.silica?.saturationRatio?.toFixed(2) || '0.00'}x
               </div>
               <div className="text-xs text-gray-500">
-                {results.systemResults.scalingAnalysis?.silica?.silicaConcentration?.toFixed(0) || '0'} mg/L
+                {((inputs.waterAnalysis.neutrals.silica || 0) * (results.systemResults.scalingAnalysis?.concentrationFactor || 1)).toFixed(0)} mg/L
               </div>
               <div className={`text-xs mt-1 ${
                 (results.systemResults.scalingAnalysis?.silica?.saturationRatio || 0) > 1.2 ? 'text-red-600' :
