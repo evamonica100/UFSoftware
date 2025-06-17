@@ -591,20 +591,11 @@ const calculateScalingPotential = (waterAnalysis, scalingParams, recovery, tempe
     recommendations.push('Consider gypsum-specific antiscalant');
   }
   
-// Enhanced Silica warnings - Replace existing silica warning section
-  if (silicaData.saturationRatio > 1.2) {
-    warnings.push(`Very high silica concentration (${silicaData.silicaConcentration.toFixed(0)} mg/L) - Severe silica scaling risk`);
-    recommendations.push('Immediate recovery reduction required');
-    recommendations.push('Consider silica-specific antiscalant');
-    recommendations.push('Monitor membrane differential pressure closely');
-  } else if (silicaData.saturationRatio > 0.8) {
-    warnings.push(`High silica concentration (${silicaData.silicaConcentration.toFixed(0)} mg/L) - Silica scaling risk`);
-    recommendations.push('Limit recovery to prevent silica precipitation');
-    recommendations.push('Consider temperature reduction if possible');
-  } else if (silicaData.saturationRatio > 0.6) {
-    // Add medium risk warning
-    recommendations.push(`Monitor silica levels: ${silicaData.silicaConcentration.toFixed(0)} mg/L (solubility: ${silicaData.silicaSolubility.toFixed(0)} mg/L)`);
-  }
+// Silica warnings
+if (silicaData.saturationRatio > 0.8) {
+  warnings.push(`High silica concentration (${silicaData.silicaConcentration.toFixed(0)} mg/L) - Silica scaling risk`);
+  recommendations.push('Limit recovery to prevent silica precipitation');
+}
   
   // Calculate limiting recovery based on scaling
   let limitingRecoveryScaling = 95; // Start with 95% as maximum
