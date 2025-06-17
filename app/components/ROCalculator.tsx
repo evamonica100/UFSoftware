@@ -100,7 +100,7 @@ scalingAnalysis: {
            scalingAnalysis: {
         lsi: { lsi: 0, pHSaturation: 0 },
         gypsum: { saturationRatio: 0 },
-        silica: { saturationRatio: 0 },
+        silica: { saturationRatio: 0, silicaConcentration: 0, silicaSolubility: 0 },
         concentrationFactor: 1,
         adjustedPH: 0,
         acidDose: 0,
@@ -694,7 +694,7 @@ scalingAnalysis: {
   scalingAnalysis: {
     lsi: { lsi: 0, pHSaturation: 0 },
     gypsum: { saturationRatio: 0 },
-    silica: { saturationRatio: 0 },
+    silica: { saturationRatio: 0, silicaConcentration: 0, silicaSolubility: 0 },
     concentrationFactor: 1,
     adjustedPH: 0,
     acidDose: 0,
