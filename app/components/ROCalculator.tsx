@@ -52,7 +52,19 @@ waterAnalysis: {
     boron: 4.5,
     carbonDioxide: 0,   // CO2 (NEW)
   }
-}
+},
+// ADD these new scaling parameters after waterAnalysis
+scalingAnalysis: {
+  feedPH: 8.1,
+  antiscalantDose: 0,
+  antiscalantType: 'phosphonate',
+  acidType: 'H2SO4',
+  targetPH: 6.5,
+  enableScalingLimits: true,
+  maxLSI: 0.5,
+  maxLSIWithAntiscalant: 2.0,
+  maxGypsumSaturation: 2.5,
+}  
 });
 
   const inputLabels = {
@@ -85,6 +97,18 @@ waterAnalysis: {
       feedOsmoticPressure: 0,
       feedPressure: 0,
       averageNDP: 0,
+           scalingAnalysis: {
+        lsi: { lsi: 0, pHSaturation: 0 },
+        gypsum: { saturationRatio: 0 },
+        silica: { saturationRatio: 0 },
+        concentrationFactor: 1,
+        adjustedPH: 0,
+        acidDose: 0,
+        warnings: [],
+        recommendations: [],
+        limitingRecoveryScaling: 95,
+        overallScalingRisk: 'LOW'
+      },
     },
   });
   
@@ -406,6 +430,201 @@ const calculateAverageElementRecovery = (systemRecovery, totalElements) => {
   if (totalElements <= 0) return 0;
   return 1 - Math.pow(1 - systemRecovery, 1 / totalElements);
 };
+  // ADD these functions after calculateAverageElementRecovery
+
+// Calculate Total Dissolved Solids from water analysis
+const calculateTDSFromAnalysis = (waterAnalysis) => {
+  let totalTDS = 0;
+  
+  // Sum all cations
+  Object.values(waterAnalysis.cations).forEach(value => {
+    totalTDS += value || 0;
+  });
+  
+  // Sum all anions
+  Object.values(waterAnalysis.anions).forEach(value => {
+    totalTDS += value || 0;
+  });
+  
+  // Sum neutrals
+  Object.values(waterAnalysis.neutrals).forEach(value => {
+    totalTDS += value || 0;
+  });
+  
+  return totalTDS;
+};
+
+// Calculate Langelier Saturation Index (LSI)
+const calculateLSI = (waterAnalysis, temperature, pH, concentrationFactor = 1) => {
+  // Get concentrated ion levels
+  const calcium = (waterAnalysis.cations.calcium || 0) * concentrationFactor;
+  const bicarbonate = (waterAnalysis.anions.bicarbonate || 0) * concentrationFactor;
+  const tds = calculateTDSFromAnalysis(waterAnalysis) * concentrationFactor;
+  
+  // LSI calculation based on the BASIC program
+  const a = 0.1 * Math.log10(tds) - 0.1;
+  const tempK = (temperature - 32) * 5 / 9 + 273;
+  const b = -13.12 * Math.log10(tempK) + 34.55;
+  
+  // Minimum values as in the program
+  const calciumMin = Math.max(calcium, 3);
+  const bicarbonateMin = Math.max(bicarbonate, 1);
+  
+  const c = Math.log10(calciumMin) - 0.4;
+  const d = Math.log10(bicarbonateMin);
+  
+  const pHSat = 9.3 + a + b - c - d;
+  const lsi = pH - pHSat;
+  
+  return {
+    lsi: lsi,
+    pHSaturation: pHSat,
+    calcium: calciumMin,
+    bicarbonate: bicarbonateMin,
+    tds: tds
+  };
+};
+
+// Calculate Gypsum (Calcium Sulfate) Saturation
+const calculateGypsumSaturation = (waterAnalysis, temperature, concentrationFactor = 1) => {
+  const calcium = (waterAnalysis.cations.calcium || 0) * concentrationFactor; // mg/L
+  const sulfate = (waterAnalysis.anions.sulfate || 0) * concentrationFactor; // mg/L
+  
+  // Convert to molality (mol/kg)
+  const calciumMolality = (calcium / 1000) / 40.08; // Ca MW = 40.08
+  const sulfateMolality = (sulfate / 1000) / 96.06; // SO4 MW = 96.06
+  
+  // Gypsum solubility product (temperature dependent)
+  // Ksp decreases with temperature for gypsum
+  const ksp25 = 2.4e-5; // at 25°C
+  const temperatureEffect = Math.exp(-0.02 * (temperature - 25));
+  const ksp = ksp25 * temperatureEffect;
+  
+  // Saturation ratio
+  const ionProduct = calciumMolality * sulfateMolality;
+  const saturationRatio = ionProduct / ksp;
+  
+  return {
+    saturationRatio: saturationRatio,
+    ionProduct: ionProduct,
+    ksp: ksp,
+    calcium: calcium,
+    sulfate: sulfate
+  };
+};
+
+// Calculate Silica Scaling Potential
+const calculateSilicaScaling = (waterAnalysis, temperature, concentrationFactor = 1) => {
+  const silica = (waterAnalysis.neutrals.silica || 0) * concentrationFactor;
+  
+  // Silica solubility (temperature dependent)
+  const silicaSolubility = 130 + 4 * (temperature - 25); // mg/L as SiO2
+  const saturationRatio = silica / silicaSolubility;
+  
+  return {
+    silicaConcentration: silica,
+    silicaSolubility: silicaSolubility,
+    saturationRatio: saturationRatio
+  };
+};
+
+// Calculate required acid dose for pH adjustment
+const calculateAcidDose = (waterAnalysis, currentPH, targetPH, acidType = 'H2SO4') => {
+  const alkalinity = waterAnalysis.anions.bicarbonate || 0; // mg/L as HCO3-
+  const alkalinityMeq = alkalinity / 61.02; // Convert to meq/L
+  
+  const pHDifference = currentPH - targetPH;
+  
+  if (pHDifference <= 0) return 0; // No acid needed
+  
+  // Estimate acid requirement (simplified)
+  const acidRequired = alkalinityMeq * pHDifference * 0.5; // meq/L
+  
+  let acidDose = 0;
+  if (acidType === 'H2SO4') {
+    acidDose = acidRequired * 49.04; // mg/L as H2SO4
+  } else if (acidType === 'HCl') {
+    acidDose = acidRequired * 36.46; // mg/L as HCl
+  }
+  
+  return Math.max(0, acidDose);
+};
+
+// Main scaling analysis function
+const calculateScalingPotential = (waterAnalysis, scalingParams, recovery, temperature) => {
+  // Calculate concentration factor
+  const concentrationFactor = 1 / (1 - recovery / 100);
+  
+  // Adjust pH if acid dosing is specified
+  let adjustedPH = scalingParams.feedPH;
+  let acidDose = 0;
+  
+  if (scalingParams.acidType !== 'none' && scalingParams.targetPH < scalingParams.feedPH) {
+    acidDose = calculateAcidDose(waterAnalysis, scalingParams.feedPH, scalingParams.targetPH, scalingParams.acidType);
+    adjustedPH = scalingParams.targetPH;
+  }
+  
+  // Calculate scaling indices
+  const lsiData = calculateLSI(waterAnalysis, temperature, adjustedPH, concentrationFactor);
+  const gypsumData = calculateGypsumSaturation(waterAnalysis, temperature, concentrationFactor);
+  const silicaData = calculateSilicaScaling(waterAnalysis, temperature, concentrationFactor);
+  
+  // Determine scaling warnings and recommendations
+  const warnings = [];
+  const recommendations = [];
+  
+  // LSI warnings
+  if (lsiData.lsi > scalingParams.maxLSI && scalingParams.antiscalantDose === 0) {
+    warnings.push(`High LSI (${lsiData.lsi.toFixed(2)}) - Calcium carbonate scaling risk`);
+    recommendations.push('Consider acid addition to reduce pH');
+    recommendations.push('Consider antiscalant dosing (2-4 mg/L)');
+  } else if (lsiData.lsi > scalingParams.maxLSIWithAntiscalant && scalingParams.antiscalantDose > 0) {
+    warnings.push(`Very high LSI (${lsiData.lsi.toFixed(2)}) - Severe scaling risk even with antiscalant`);
+    recommendations.push('Reduce system recovery');
+    recommendations.push('Increase acid dosing');
+  }
+  
+  // Gypsum warnings
+  if (gypsumData.saturationRatio > scalingParams.maxGypsumSaturation) {
+    warnings.push(`High gypsum saturation (${gypsumData.saturationRatio.toFixed(2)}x) - Calcium sulfate scaling risk`);
+    recommendations.push('Reduce system recovery to limit concentration');
+    recommendations.push('Consider gypsum-specific antiscalant');
+  }
+  
+  // Silica warnings
+  if (silicaData.saturationRatio > 0.8) {
+    warnings.push(`High silica concentration (${silicaData.silicaConcentration.toFixed(0)} mg/L) - Silica scaling risk`);
+    recommendations.push('Limit recovery to prevent silica precipitation');
+  }
+  
+  // Calculate limiting recovery based on scaling
+  let limitingRecoveryScaling = 95; // Start with 95% as maximum
+  
+  // Limit based on LSI
+  if (lsiData.lsi > scalingParams.maxLSI) {
+    const maxConcentrationFactor = Math.pow(10, (scalingParams.maxLSI + lsiData.pHSaturation - adjustedPH) / 0.5);
+    limitingRecoveryScaling = Math.min(limitingRecoveryScaling, (1 - 1/maxConcentrationFactor) * 100);
+  }
+  
+  // Limit based on gypsum
+  if (gypsumData.saturationRatio > 1) {
+    const maxConcentrationFactorGypsum = scalingParams.maxGypsumSaturation / gypsumData.saturationRatio * concentrationFactor;
+    limitingRecoveryScaling = Math.min(limitingRecoveryScaling, (1 - 1/maxConcentrationFactorGypsum) * 100);
+  }
+  
+  return {
+    lsi: lsiData,
+    gypsum: gypsumData,
+    silica: silicaData,
+    concentrationFactor: concentrationFactor,
+    adjustedPH: adjustedPH,
+    acidDose: acidDose,
+    warnings: warnings,
+    recommendations: recommendations,
+    limitingRecoveryScaling: Math.max(50, limitingRecoveryScaling), // Minimum 50%
+    overallScalingRisk: warnings.length > 0 ? 'HIGH' : gypsumData.saturationRatio > 1.5 || lsiData.lsi > 0.2 ? 'MEDIUM' : 'LOW'
+  };
+};
   // ADDITION 1: Calculate average permeate-side osmotic pressure 
 // Formula from attachment: π̄pf = πfi(1 - Ri)
 const calculatePermeateOsmoticPressure = (feedOsmoticPressure, elementRejection) => {
@@ -459,6 +678,19 @@ waterAnalysis: {
         feedOsmoticPressure: 0,
         feedPressure: 0,
         averageNDP: 0,
+          // ADD scaling analysis reset
+  scalingAnalysis: {
+    lsi: { lsi: 0, pHSaturation: 0 },
+    gypsum: { saturationRatio: 0 },
+    silica: { saturationRatio: 0 },
+    concentrationFactor: 1,
+    adjustedPH: 0,
+    acidDose: 0,
+    warnings: [],
+    recommendations: [],
+    limitingRecoveryScaling: 95,
+    overallScalingRisk: 'LOW'
+  },
       },
     });
 
@@ -1147,6 +1379,17 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
             },
           });
         }
+
+          // Calculate scaling potential
+        const scalingResults = calculateScalingPotential(
+          inputs.waterAnalysis,
+          inputs.scalingAnalysis,
+          bestResults.recovery,
+          inputs.temperature
+        );
+        
+        // Add scaling results to bestResults
+        bestResults.scalingAnalysis = scalingResults;
         
         // Update the results state
         setResults({
@@ -1164,7 +1407,21 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
             feedOsmoticPressure: parseFloat(bestResults.feedOsmoticPressure.toFixed(1)),
             feedPressure: parseFloat(bestFeedPressure.toFixed(1)),
             averageNDP: parseFloat(bestResults.averageNDP.toFixed(1)),
+             // ADD scaling analysis results
+            scalingAnalysis: bestResults.scalingAnalysis || {
+              lsi: { lsi: 0, pHSaturation: 0 },
+              gypsum: { saturationRatio: 0 },
+              silica: { saturationRatio: 0 },
+              concentrationFactor: 1,
+              adjustedPH: 0,
+              acidDose: 0,
+              warnings: [],
+              recommendations: [],
+              limitingRecoveryScaling: 95,
+              overallScalingRisk: 'LOW'
+            },
           },
+          
         });
       }
       
@@ -1536,6 +1793,98 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
     </div>
   </div>
 </div>
+            {/* ADD this section after Water Analysis */}
+            
+            {/* Scaling Analysis Section */}
+            <div className="bg-gray-50 p-4 rounded-lg mb-4">
+              <h4 className="text-md font-semibold text-blue-700 mb-3">Scaling Analysis Parameters</h4>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Feed Conditions */}
+                <div>
+                  <h5 className="font-medium text-gray-700 mb-2">Feed Water Conditions</h5>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-sm text-gray-600">Feed pH</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={inputs.scalingAnalysis.feedPH}
+                        onChange={(e) => setInputs(prev => ({
+                          ...prev,
+                          scalingAnalysis: {
+                            ...prev.scalingAnalysis,
+                            feedPH: parseFloat(e.target.value) || 8.1
+                          }
+                        }))}
+                        className="w-full p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Chemical Dosing */}
+                <div>
+                  <h5 className="font-medium text-gray-700 mb-2">Chemical Treatment</h5>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-sm text-gray-600">Antiscalant Dose (mg/L)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={inputs.scalingAnalysis.antiscalantDose}
+                        onChange={(e) => setInputs(prev => ({
+                          ...prev,
+                          scalingAnalysis: {
+                            ...prev.scalingAnalysis,
+                            antiscalantDose: parseFloat(e.target.value) || 0
+                          }
+                        }))}
+                        className="w-full p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm text-gray-600">Acid Type</label>
+                      <select
+                        value={inputs.scalingAnalysis.acidType}
+                        onChange={(e) => setInputs(prev => ({
+                          ...prev,
+                          scalingAnalysis: {
+                            ...prev.scalingAnalysis,
+                            acidType: e.target.value
+                          }
+                        }))}
+                        className="w-full p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="none">No Acid</option>
+                        <option value="H2SO4">Sulfuric Acid (H₂SO₄)</option>
+                        <option value="HCl">Hydrochloric Acid (HCl)</option>
+                      </select>
+                    </div>
+                    
+                    {inputs.scalingAnalysis.acidType !== 'none' && (
+                      <div>
+                        <label className="block text-sm text-gray-600">Target pH</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={inputs.scalingAnalysis.targetPH}
+                          onChange={(e) => setInputs(prev => ({
+                            ...prev,
+                            scalingAnalysis: {
+                              ...prev.scalingAnalysis,
+                              targetPH: parseFloat(e.target.value) || 6.5
+                            }
+                          }))}
+                          className="w-full p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
             {/* Element Type Selection */}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700">
@@ -1722,6 +2071,112 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
         </div>
       </div>
 
+      {/* ADD this section after System Overview */}
+        
+        {/* Scaling Analysis Results */}
+        <div className="bg-gray-50 p-6 rounded-lg">
+          <h3 className="text-lg font-semibold text-blue-700 mb-4">
+            Scaling Analysis Results
+          </h3>
+          
+          {/* Overall Scaling Risk */}
+          <div className={`p-3 rounded-md mb-4 ${
+            results.systemResults.scalingAnalysis?.overallScalingRisk === 'HIGH' ? 'bg-red-100 border border-red-300' :
+            results.systemResults.scalingAnalysis?.overallScalingRisk === 'MEDIUM' ? 'bg-yellow-100 border border-yellow-300' :
+            'bg-green-100 border border-green-300'
+          }`}>
+            <div className="flex justify-between items-center">
+              <span className="font-medium text-gray-700">Overall Scaling Risk</span>
+              <span className={`font-bold ${
+                results.systemResults.scalingAnalysis?.overallScalingRisk === 'HIGH' ? 'text-red-700' :
+                results.systemResults.scalingAnalysis?.overallScalingRisk === 'MEDIUM' ? 'text-yellow-700' :
+                'text-green-700'
+              }`}>
+                {results.systemResults.scalingAnalysis?.overallScalingRisk || 'LOW'}
+              </span>
+            </div>
+          </div>
+          
+          {/* Scaling Indices */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div className="p-3 bg-white rounded-md">
+              <div className="text-sm font-medium text-gray-700 mb-1">Langelier Saturation Index</div>
+              <div className="text-lg font-bold text-gray-900">
+                {results.systemResults.scalingAnalysis?.lsi?.lsi?.toFixed(2) || '0.00'}
+              </div>
+              <div className="text-xs text-gray-500">
+                pH Sat: {results.systemResults.scalingAnalysis?.lsi?.pHSaturation?.toFixed(2) || '0.00'}
+              </div>
+            </div>
+            
+            <div className="p-3 bg-white rounded-md">
+              <div className="text-sm font-medium text-gray-700 mb-1">Gypsum Saturation</div>
+              <div className="text-lg font-bold text-gray-900">
+                {results.systemResults.scalingAnalysis?.gypsum?.saturationRatio?.toFixed(2) || '0.00'}x
+              </div>
+              <div className="text-xs text-gray-500">Relative to solubility</div>
+            </div>
+            
+            <div className="p-3 bg-white rounded-md">
+              <div className="text-sm font-medium text-gray-700 mb-1">Concentration Factor</div>
+              <div className="text-lg font-bold text-gray-900">
+                {results.systemResults.scalingAnalysis?.concentrationFactor?.toFixed(2) || '1.00'}x
+              </div>
+              <div className="text-xs text-gray-500">Ion concentration increase</div>
+            </div>
+          </div>
+          
+          {/* Treatment Requirements */}
+          {results.systemResults.scalingAnalysis?.acidDose > 0 && (
+            <div className="p-3 bg-blue-50 rounded-md mb-4">
+              <div className="text-sm font-medium text-blue-700 mb-1">Required Acid Dose</div>
+              <div className="text-lg font-bold text-blue-900">
+                {results.systemResults.scalingAnalysis.acidDose.toFixed(1)} mg/L
+              </div>
+              <div className="text-xs text-blue-600">
+                {inputs.scalingAnalysis.acidType} to achieve pH {inputs.scalingAnalysis.targetPH}
+              </div>
+            </div>
+          )}
+          
+          {/* Warnings */}
+          {results.systemResults.scalingAnalysis?.warnings?.length > 0 && (
+            <div className="mb-4">
+              <h5 className="font-medium text-red-700 mb-2">⚠️ Scaling Warnings</h5>
+              <ul className="text-sm text-red-600 space-y-1 list-disc list-inside">
+                {results.systemResults.scalingAnalysis.warnings.map((warning, idx) => (
+                  <li key={idx}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          {/* Recommendations */}
+          {results.systemResults.scalingAnalysis?.recommendations?.length > 0 && (
+            <div className="mb-4">
+              <h5 className="font-medium text-blue-700 mb-2">💡 Recommendations</h5>
+              <ul className="text-sm text-blue-600 space-y-1 list-disc list-inside">
+                {results.systemResults.scalingAnalysis.recommendations.map((rec, idx) => (
+                  <li key={idx}>{rec}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          {/* Scaling Limiting Recovery */}
+          <div className="p-3 bg-orange-50 rounded-md border border-orange-200">
+            <div className="flex justify-between items-center">
+              <span className="font-medium text-orange-700">Maximum Recovery (Scaling Limited)</span>
+              <span className="font-bold text-orange-900">
+                {results.systemResults.scalingAnalysis?.limitingRecoveryScaling?.toFixed(1) || '95.0'}%
+              </span>
+            </div>
+            <div className="text-xs text-orange-600 mt-1">
+              Recovery limit based on scaling potential
+            </div>
+          </div>
+        </div>
+      
       <div className="mt-8 grid grid-cols-1 gap-8">
         {/* Performance Graphs */}
         <div className="bg-gray-50 p-6 rounded-lg">
