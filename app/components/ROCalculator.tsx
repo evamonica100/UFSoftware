@@ -591,10 +591,19 @@ const calculateScalingPotential = (waterAnalysis, scalingParams, recovery, tempe
     recommendations.push('Consider gypsum-specific antiscalant');
   }
   
-  // Silica warnings
-  if (silicaData.saturationRatio > 0.8) {
+// Enhanced Silica warnings - Replace existing silica warning section
+  if (silicaData.saturationRatio > 1.2) {
+    warnings.push(`Very high silica concentration (${silicaData.silicaConcentration.toFixed(0)} mg/L) - Severe silica scaling risk`);
+    recommendations.push('Immediate recovery reduction required');
+    recommendations.push('Consider silica-specific antiscalant');
+    recommendations.push('Monitor membrane differential pressure closely');
+  } else if (silicaData.saturationRatio > 0.8) {
     warnings.push(`High silica concentration (${silicaData.silicaConcentration.toFixed(0)} mg/L) - Silica scaling risk`);
     recommendations.push('Limit recovery to prevent silica precipitation');
+    recommendations.push('Consider temperature reduction if possible');
+  } else if (silicaData.saturationRatio > 0.6) {
+    // Add medium risk warning
+    recommendations.push(`Monitor silica levels: ${silicaData.silicaConcentration.toFixed(0)} mg/L (solubility: ${silicaData.silicaSolubility.toFixed(0)} mg/L)`);
   }
   
   // Calculate limiting recovery based on scaling
@@ -2109,8 +2118,9 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
             </div>
           </div>
           
-          {/* Scaling Indices */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+{/* Enhanced Scaling Indices - Replace the existing grid with this */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            {/* LSI */}
             <div className="p-3 bg-white rounded-md">
               <div className="text-sm font-medium text-gray-700 mb-1">Langelier Saturation Index</div>
               <div className="text-lg font-bold text-gray-900">
@@ -2119,23 +2129,169 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
               <div className="text-xs text-gray-500">
                 pH Sat: {results.systemResults.scalingAnalysis?.lsi?.pHSaturation?.toFixed(2) || '0.00'}
               </div>
+              <div className={`text-xs mt-1 ${
+                (results.systemResults.scalingAnalysis?.lsi?.lsi || 0) > 0.5 ? 'text-red-600' :
+                (results.systemResults.scalingAnalysis?.lsi?.lsi || 0) > 0.2 ? 'text-yellow-600' : 'text-green-600'
+              }`}>
+                {(results.systemResults.scalingAnalysis?.lsi?.lsi || 0) > 0.5 ? 'High Risk' :
+                 (results.systemResults.scalingAnalysis?.lsi?.lsi || 0) > 0.2 ? 'Medium Risk' : 'Low Risk'}
+              </div>
             </div>
             
+            {/* Gypsum */}
             <div className="p-3 bg-white rounded-md">
               <div className="text-sm font-medium text-gray-700 mb-1">Gypsum Saturation</div>
               <div className="text-lg font-bold text-gray-900">
                 {results.systemResults.scalingAnalysis?.gypsum?.saturationRatio?.toFixed(2) || '0.00'}x
               </div>
               <div className="text-xs text-gray-500">Relative to solubility</div>
+              <div className={`text-xs mt-1 ${
+                (results.systemResults.scalingAnalysis?.gypsum?.saturationRatio || 0) > 2.5 ? 'text-red-600' :
+                (results.systemResults.scalingAnalysis?.gypsum?.saturationRatio || 0) > 1.5 ? 'text-yellow-600' : 'text-green-600'
+              }`}>
+                {(results.systemResults.scalingAnalysis?.gypsum?.saturationRatio || 0) > 2.5 ? 'High Risk' :
+                 (results.systemResults.scalingAnalysis?.gypsum?.saturationRatio || 0) > 1.5 ? 'Medium Risk' : 'Low Risk'}
+              </div>
             </div>
             
+            {/* NEW: Silica Scaling */}
+            <div className="p-3 bg-white rounded-md">
+              <div className="text-sm font-medium text-gray-700 mb-1">Silica Scaling</div>
+              <div className="text-lg font-bold text-gray-900">
+                {results.systemResults.scalingAnalysis?.silica?.saturationRatio?.toFixed(2) || '0.00'}x
+              </div>
+              <div className="text-xs text-gray-500">
+                {results.systemResults.scalingAnalysis?.silica?.silicaConcentration?.toFixed(0) || '0'} mg/L
+              </div>
+              <div className={`text-xs mt-1 ${
+                (results.systemResults.scalingAnalysis?.silica?.saturationRatio || 0) > 1.2 ? 'text-red-600' :
+                (results.systemResults.scalingAnalysis?.silica?.saturationRatio || 0) > 0.8 ? 'text-yellow-600' : 'text-green-600'
+              }`}>
+                {(results.systemResults.scalingAnalysis?.silica?.saturationRatio || 0) > 1.2 ? 'High Risk' :
+                 (results.systemResults.scalingAnalysis?.silica?.saturationRatio || 0) > 0.8 ? 'Medium Risk' : 'Low Risk'}
+              </div>
+            </div>
+            
+            {/* Concentration Factor */}
             <div className="p-3 bg-white rounded-md">
               <div className="text-sm font-medium text-gray-700 mb-1">Concentration Factor</div>
               <div className="text-lg font-bold text-gray-900">
                 {results.systemResults.scalingAnalysis?.concentrationFactor?.toFixed(2) || '1.00'}x
               </div>
               <div className="text-xs text-gray-500">Ion concentration increase</div>
+              <div className="text-xs text-gray-600 mt-1">
+                {((1 - 1/results.systemResults.scalingAnalysis?.concentrationFactor) * 100).toFixed(1)}% Recovery
+              </div>
             </div>
+          </div>
+
+          {/* NEW: Detailed Ion Concentrations - Add this after scaling indices */}
+          <div className="mb-4">
+            <details className="bg-white rounded-md border border-gray-200">
+              <summary className="p-3 font-medium text-gray-700 cursor-pointer hover:bg-gray-50">
+                📊 Detailed Ion Concentrations in Concentrate
+              </summary>
+              <div className="p-4 border-t border-gray-200">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Key Scaling Ions */}
+                  <div>
+                    <h6 className="font-medium text-gray-700 mb-3">Key Scaling Ions</h6>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span>Calcium (Ca²⁺):</span>
+                        <span className="font-medium">
+                          {((inputs.waterAnalysis.cations.calcium || 0) * (results.systemResults.scalingAnalysis?.concentrationFactor || 1)).toFixed(0)} mg/L
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Sulfate (SO₄²⁻):</span>
+                        <span className="font-medium">
+                          {((inputs.waterAnalysis.anions.sulfate || 0) * (results.systemResults.scalingAnalysis?.concentrationFactor || 1)).toFixed(0)} mg/L
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Bicarbonate (HCO₃⁻):</span>
+                        <span className="font-medium">
+                          {((inputs.waterAnalysis.anions.bicarbonate || 0) * (results.systemResults.scalingAnalysis?.concentrationFactor || 1)).toFixed(0)} mg/L
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Silica (SiO₂):</span>
+                        <span className="font-medium">
+                          {((inputs.waterAnalysis.neutrals.silica || 0) * (results.systemResults.scalingAnalysis?.concentrationFactor || 1)).toFixed(0)} mg/L
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Other Cations */}
+                  <div>
+                    <h6 className="font-medium text-gray-700 mb-3">Other Cations</h6>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span>Sodium (Na⁺):</span>
+                        <span className="font-medium">
+                          {((inputs.waterAnalysis.cations.sodium || 0) * (results.systemResults.scalingAnalysis?.concentrationFactor || 1)).toFixed(0)} mg/L
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Magnesium (Mg²⁺):</span>
+                        <span className="font-medium">
+                          {((inputs.waterAnalysis.cations.magnesium || 0) * (results.systemResults.scalingAnalysis?.concentrationFactor || 1)).toFixed(0)} mg/L
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Potassium (K⁺):</span>
+                        <span className="font-medium">
+                          {((inputs.waterAnalysis.cations.potassium || 0) * (results.systemResults.scalingAnalysis?.concentrationFactor || 1)).toFixed(0)} mg/L
+                        </span>
+                      </div>
+                      {(inputs.waterAnalysis.cations.barium || 0) > 0 && (
+                        <div className="flex justify-between">
+                          <span>Barium (Ba²⁺):</span>
+                          <span className="font-medium text-red-600">
+                            {((inputs.waterAnalysis.cations.barium || 0) * (results.systemResults.scalingAnalysis?.concentrationFactor || 1)).toFixed(1)} mg/L
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Other Anions */}
+                  <div>
+                    <h6 className="font-medium text-gray-700 mb-3">Other Anions</h6>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span>Chloride (Cl⁻):</span>
+                        <span className="font-medium">
+                          {((inputs.waterAnalysis.anions.chloride || 0) * (results.systemResults.scalingAnalysis?.concentrationFactor || 1)).toFixed(0)} mg/L
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Carbonate (CO₃²⁻):</span>
+                        <span className="font-medium">
+                          {((inputs.waterAnalysis.anions.carbonate || 0) * (results.systemResults.scalingAnalysis?.concentrationFactor || 1)).toFixed(0)} mg/L
+                        </span>
+                      </div>
+                      {(inputs.waterAnalysis.anions.fluoride || 0) > 0 && (
+                        <div className="flex justify-between">
+                          <span>Fluoride (F⁻):</span>
+                          <span className="font-medium">
+                            {((inputs.waterAnalysis.anions.fluoride || 0) * (results.systemResults.scalingAnalysis?.concentrationFactor || 1)).toFixed(1)} mg/L
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex justify-between border-t border-gray-200 pt-2 font-medium">
+                        <span>Total TDS:</span>
+                        <span>
+                          {(calculateTDSFromAnalysis(inputs.waterAnalysis) * (results.systemResults.scalingAnalysis?.concentrationFactor || 1)).toFixed(0)} mg/L
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </details>
           </div>
           
           {/* Treatment Requirements */}
@@ -2205,6 +2361,91 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
           </div>
         </div>
 
+        {/* NEW: Detailed Recovery Limitations - Add after existing scaling limiting recovery */}
+          <details className="bg-orange-50 rounded-md border border-orange-200 mb-4">
+            <summary className="p-3 font-medium text-orange-700 cursor-pointer hover:bg-orange-100">
+              📈 Recovery Limitations by Scale Type
+            </summary>
+            <div className="p-4 border-t border-orange-200">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div>
+                  <h6 className="font-medium text-orange-800 mb-2">LSI-Limited Recovery</h6>
+                  <div className="space-y-1">
+                    <div className="flex justify-between">
+                      <span>Current LSI:</span>
+                      <span className="font-medium">{results.systemResults.scalingAnalysis?.lsi?.lsi?.toFixed(2) || '0.00'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Max Safe LSI:</span>
+                      <span className="font-medium">{inputs.scalingAnalysis?.maxLSI || 0.5}</span>
+                    </div>
+                    <div className="flex justify-between font-medium">
+                      <span>LSI-Limited:</span>
+                      <span className={
+                        (results.systemResults.scalingAnalysis?.lsi?.lsi || 0) > (inputs.scalingAnalysis?.maxLSI || 0.5) ? 'text-red-600' : 'text-green-600'
+                      }>
+                        {results.systemResults.scalingAnalysis?.lsi?.lsi > inputs.scalingAnalysis?.maxLSI ? 
+                          `${((1 - Math.pow(10, (inputs.scalingAnalysis.maxLSI + results.systemResults.scalingAnalysis.lsi.pHSaturation - inputs.scalingAnalysis.feedPH) / 0.5)) * 100).toFixed(1)}%` :
+                          '✓ No Limit'
+                        }
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div>
+                  <h6 className="font-medium text-orange-800 mb-2">Gypsum-Limited Recovery</h6>
+                  <div className="space-y-1">
+                    <div className="flex justify-between">
+                      <span>Current Ratio:</span>
+                      <span className="font-medium">{results.systemResults.scalingAnalysis?.gypsum?.saturationRatio?.toFixed(2) || '0.00'}x</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Max Safe Ratio:</span>
+                      <span className="font-medium">{inputs.scalingAnalysis?.maxGypsumSaturation || 2.5}x</span>
+                    </div>
+                    <div className="flex justify-between font-medium">
+                      <span>Gypsum-Limited:</span>
+                      <span className={
+                        (results.systemResults.scalingAnalysis?.gypsum?.saturationRatio || 0) > (inputs.scalingAnalysis?.maxGypsumSaturation || 2.5) ? 'text-red-600' : 'text-green-600'
+                      }>
+                        {results.systemResults.scalingAnalysis?.gypsum?.saturationRatio > inputs.scalingAnalysis?.maxGypsumSaturation ? 
+                          `${((1 - (inputs.scalingAnalysis.maxGypsumSaturation / results.systemResults.scalingAnalysis.gypsum.saturationRatio)) * 100).toFixed(1)}%` :
+                          '✓ No Limit'
+                        }
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div>
+                  <h6 className="font-medium text-orange-800 mb-2">Silica-Limited Recovery</h6>
+                  <div className="space-y-1">
+                    <div className="flex justify-between">
+                      <span>Current Ratio:</span>
+                      <span className="font-medium">{results.systemResults.scalingAnalysis?.silica?.saturationRatio?.toFixed(2) || '0.00'}x</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Silica Conc:</span>
+                      <span className="font-medium">{results.systemResults.scalingAnalysis?.silica?.silicaConcentration?.toFixed(0) || '0'} mg/L</span>
+                    </div>
+                    <div className="flex justify-between font-medium">
+                      <span>Silica-Limited:</span>
+                      <span className={
+                        (results.systemResults.scalingAnalysis?.silica?.saturationRatio || 0) > 1.0 ? 'text-red-600' : 'text-green-600'
+                      }>
+                        {results.systemResults.scalingAnalysis?.silica?.saturationRatio > 1.0 ? 
+                          `${((1 - (1.0 / results.systemResults.scalingAnalysis.silica.saturationRatio)) * 100).toFixed(1)}%` :
+                          '✓ No Limit'
+                        }
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </details>
+        
         {/* Element Details */}
         <div className="bg-gray-50 p-6 rounded-lg">
           <h3 className="text-lg font-semibold text-blue-700 mb-4">
