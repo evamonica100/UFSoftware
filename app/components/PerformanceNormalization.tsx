@@ -36,7 +36,7 @@ const calculateOsmoticPressure = (tds: number, temperature: number): number => {
   if (tds < 20000) {
     return (tds * (temperature + 320)) / 491000;
   }
-  return (tds * 1.12 * (273 + temperature)) / 58500;
+  return (0.0117 * tds - 34) * (temperature + 320) / 345;
 };
 
 const calculateFeedConcentrate = (feedTDS: number, recovery: number): number => {
