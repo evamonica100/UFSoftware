@@ -343,12 +343,12 @@ const OperatingData = () => {
     const referenceFC = calculateFeedConcentrate(referenceFeedTDS, referenceRecovery);
     
     // Calculate osmotic pressure using industry standard approach
-    const calculateOsmoticPressure = (tds: number, temp: number): number => {
-      if (tds < 20000) {
-        return (tds * (temp + 320)) / 491000;
-      }
-      return (tds * 1.12 * (273 + temp)) / 58500;
-    };
+const calculateOsmoticPressure = (tds: number, temp: number): number => {
+  if (tds < 20000) {
+    return (tds * (temp + 320)) / 491000;
+  }
+  return (0.0117 * tds - 34) * (temp + 320) / 345;
+};
     
     const currentOP = calculateOsmoticPressure(currentFC, entry.feedTemp);
     const referenceOP = calculateOsmoticPressure(referenceFC, referenceEntry.feedTemp);
@@ -375,18 +375,8 @@ const OperatingData = () => {
     // Normalized system pressure adjusted for temperature effects
     const NSP = entry.feedPressure / currentTCF;
     
-    // Normalized salt rejection - using standard formula
-    // For salt rejection, typically use the ratio of salt passage
-    // Salt passage is (1 - rejection)
-    const currentSP = 1 - (R/100);
-    const referenceSP = 1 - ((1 - referenceEntry.permeateConductivity / referenceEntry.feedConductivity) * 100)/100;
-    
-    // Temperature correction for salt passage
-    const saltPassageTCF = Math.exp(0.05 * (entry.feedTemp - referenceEntry.feedTemp));
-    
-    // Normalized salt rejection
-    const normalizedSP = currentSP / saltPassageTCF;
-    const NSR = (1 - normalizedSP) * 100;
+// Simplified salt rejection normalization
+const NSR = R; // Use calculated rejection directly for basic normalization
 
     return { days, dP, F, R, NQp, NSP, NSR, NdP };
   };
