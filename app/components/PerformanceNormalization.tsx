@@ -195,8 +195,8 @@ if (calculation.customFields?.performanceData) {
  <SaveLoadCalculation
         calculationData={{
           name: 'Performance Normalization Analysis',
-          performanceData: data,
           customFields: {
+          performanceData: data,
             normalizedFlow: normalizedFlow,
             deviationPercent: deviationPercent,
             calculationType: 'performance_normalization'
