@@ -11,8 +11,8 @@ import {
   quickSave,
   Project,
   ROCalculation 
-} from '../lib/projectManager';
-import { isAuthenticated } from '../lib/auth';
+} from '../../lib/projectManager';
+import { isAuthenticated } from '../../lib/auth';
 
 interface SaveLoadCalculationProps {
   calculationData: Partial<ROCalculation>;
