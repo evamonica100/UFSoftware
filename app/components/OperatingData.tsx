@@ -1027,7 +1027,7 @@ const NSR = R; // Use calculated rejection directly for basic normalization
         )}
       </div>
     </div>
-    {/* <SaveLoadCalculation
+<SaveLoadCalculation
         calculationData={{
           name: 'RO Operating Data Analysis',
           operatingData: {
@@ -1038,7 +1038,7 @@ const NSR = R; // Use calculated rejection directly for basic normalization
           }
         }}
         onLoad={handleLoadCalculation}
-      /> */}
+      />
     </div>
   );
 };
