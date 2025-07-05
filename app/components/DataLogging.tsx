@@ -3,6 +3,9 @@
 
 import React, { useState } from 'react';
 import { Input } from './ui/input';
+import SaveLoadCalculation from './SaveLoadCalculation';
+import { useAutoSave } from './AuthNavigation';
+import { ROCalculation } from '../lib/projectManager';
 
 interface LogEntry {
   timestamp: string;
@@ -73,6 +76,14 @@ const DataLogging = () => {
   });
 
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  useAutoSave({
+    name: 'Data Logging Auto-save',
+    customFields: {
+      calculationType: 'data_logging',
+      logs: logs,
+      currentEntry: logEntry
+    }
+  });
 
   const handleInputChange = (category: string, subcategory: string, value: string) => {
     const numValue = parseFloat(value) || 0;
@@ -99,7 +110,14 @@ const DataLogging = () => {
     e.preventDefault();
     setLogs(prev => [...prev, { ...logEntry, timestamp: new Date().toISOString() }]);
   };
-
+ const handleLoadCalculation = (calculation: ROCalculation) => {
+    if (calculation.customFields?.logs) {
+      setLogs(calculation.customFields.logs);
+    }
+    if (calculation.customFields?.currentEntry) {
+      setLogEntry(calculation.customFields.currentEntry);
+    }
+  };
   return (
     <div className="bg-white p-6 rounded-lg shadow-lg">
       <h2 className="text-2xl font-bold text-blue-800 mb-6">Operating Data Logging</h2>
@@ -225,6 +243,19 @@ const DataLogging = () => {
           </table>
         </div>
       </div>
+    </div>
+ <SaveLoadCalculation
+        calculationData={{
+          name: 'Data Logging Session',
+          customFields: {
+            calculationType: 'data_logging',
+            logs: logs,
+            currentEntry: logEntry,
+            timestamp: new Date().toISOString()
+          }
+        }}
+        onLoad={handleLoadCalculation}
+      />
     </div>
   );
 };
