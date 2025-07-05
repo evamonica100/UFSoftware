@@ -1,15 +1,14 @@
-// app/login/page.tsx - Enhanced version of login page
+// app/login/page.tsx - Updated login page with registration disabled
 'use client';
 import { useState, useEffect } from 'react';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import Image from 'next/image';
 import logo from '../../public/zekindo-logo.png';
-import { login, register, isAuthenticated } from '../../lib/auth';
+import { login, isAuthenticated } from '../../lib/auth';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
-  const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({
     email: '',
     company: '',
@@ -40,26 +39,12 @@ export default function LoginPage() {
       return;
     }
 
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters long');
-      setLoading(false);
-      return;
-    }
-
     try {
-      if (isLogin) {
-        await login(formData);
-        setSuccess('Login successful! Redirecting...');
-        setTimeout(() => {
-          window.location.href = '/';
-        }, 1500);
-      } else {
-        await register(formData);
-        setSuccess('Account created successfully! Redirecting...');
-        setTimeout(() => {
-          window.location.href = '/';
-        }, 1500);
-      }
+      await login(formData);
+      setSuccess('Login successful! Redirecting...');
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 1500);
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
     } finally {
@@ -68,24 +53,32 @@ export default function LoginPage() {
   };
 
   const handleHelpClick = () => {
-    const helpText = isLogin 
-      ? "Welcome to Zekindo RO Membrane Calculator!\n\n" +
-        "To get started:\n" +
-        "1. Enter your email/username\n" +
-        "2. Enter your company name\n" +
-        "3. Enter your password\n" +
-        "4. Click Login to access the calculator\n\n" +
-        "Don't have an account? Click 'Create Account' below.\n\n" +
-        "For support, contact: eva.monica@zekindo.co.id"
-      : "Creating a New Account:\n\n" +
-        "1. Enter your email address\n" +
-        "2. Enter your company name\n" +
-        "3. Create a password (min 6 characters)\n" +
-        "4. Click 'Create Account'\n\n" +
-        "Your calculations will be saved and you can access them anytime!\n\n" +
-        "For support, contact: eva.monica@zekindo.co.id";
+    const helpText = "Welcome to Zekindo RO Membrane Calculator!\n\n" +
+      "To get started:\n" +
+      "1. Enter your email/username\n" +
+      "2. Enter your company name\n" +
+      "3. Enter your password\n" +
+      "4. Click Login to access the calculator\n\n" +
+      "If you don't have access credentials, please contact:\n" +
+      "eva.monica@zekindo.co.id\n\n" +
+      "Default demo credentials:\n" +
+      "Email: demo@company.com\n" +
+      "Company: Demo Company\n" +
+      "Password: demo123";
     
     alert(helpText);
+  };
+
+  const handleForgotPassword = () => {
+    const message = "For password reset or account access issues, please contact:\n\n" +
+      "Eva Monica\n" +
+      "Email: eva.monica@zekindo.co.id\n\n" +
+      "Please include:\n" +
+      "- Your email address\n" +
+      "- Your company name\n" +
+      "- Brief description of the issue";
+    
+    alert(message);
   };
 
   return (
@@ -96,7 +89,7 @@ export default function LoginPage() {
         </div>
         
         <h1 className="text-2xl font-bold text-center mb-6" style={{ color: '#007DB8' }}>
-          {isLogin ? 'Login to RO Membrane Calculator' : 'Create Your Account'}
+          RO Membrane Calculator
         </h1>
         
         {error && (
@@ -144,29 +137,40 @@ export default function LoginPage() {
               onChange={(e) => setFormData({...formData, password: e.target.value})}
               required
               disabled={loading}
-              minLength={6}
-              placeholder={isLogin ? "Enter your password" : "Create a password (min 6 characters)"}
+              placeholder="Enter your password"
             />
           </div>
           
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? 'Please wait...' : (isLogin ? 'Login' : 'Create Account')}
+            {loading ? 'Signing in...' : 'Login'}
           </Button>
         </form>
         
-        <div className="mt-4 text-center space-y-2">
+        <div className="mt-6 text-center space-y-3">
           <Button 
             variant="ghost" 
-            onClick={() => setIsLogin(!isLogin)}
+            onClick={handleForgotPassword}
             disabled={loading}
-            className="text-sm"
+            className="text-sm text-blue-600 hover:text-blue-800"
           >
-            {isLogin ? "Don't have an account? Create one here" : "Already have an account? Login here"}
+            Forgot Password?
           </Button>
           
-          <Button variant="ghost" onClick={handleHelpClick} className="text-sm">
+          <Button 
+            variant="ghost" 
+            onClick={handleHelpClick} 
+            className="text-sm text-gray-600 hover:text-gray-800"
+          >
             Need Help?
           </Button>
+        </div>
+        
+        {/* Access Request Notice */}
+        <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-xs text-blue-800 text-center">
+            <strong>Need Access?</strong><br/>
+            Contact eva.monica@zekindo.co.id to request login credentials
+          </p>
         </div>
       </div>
     </div>
