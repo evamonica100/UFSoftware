@@ -243,7 +243,6 @@ const DataLogging = () => {
           </table>
         </div>
       </div>
-    </div>
  <SaveLoadCalculation
         calculationData={{
           name: 'Data Logging Session',
