@@ -2,6 +2,33 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+// Add useCallback to calculateNormalizedFlow
+const calculateNormalizedFlow = useCallback(() => {
+  const op = data.operatingConditions;
+  const bl = data.baselineConditions;
+
+  const opTCF = calculateTCF(op.temperature);
+  const blTCF = calculateTCF(bl.temperature);
+
+  const opFC = calculateFeedConcentrate(op.feedTDS, op.recovery);
+  const blFC = calculateFeedConcentrate(bl.feedTDS, bl.recovery);
+
+  const opOP = calculateOsmoticPressure(opFC, op.temperature);
+  const blOP = calculateOsmoticPressure(blFC, bl.temperature);
+
+  const opNDP = op.feedPressure - op.pressureDrop/2 - op.permeatePressure - opOP;
+  const blNDP = bl.feedPressure - bl.pressureDrop/2 - bl.permeatePressure - blOP;
+
+  const normalizedFlow = ((opNDP / blNDP) * (opTCF / blTCF)) * bl.permeateFlow;
+  const deviation = ((normalizedFlow - op.permeateFlow) / op.permeateFlow) * 100;
+
+  setNormalizedFlow(normalizedFlow);
+  setDeviationPercent(deviation);
+}, [data]);
+
+useEffect(() => {
+  calculateNormalizedFlow();
+}, [calculateNormalizedFlow]);
 import { Input } from './ui/input';
 import SaveLoadCalculation from './SaveLoadCalculation';
 import { useAutoSave } from './AuthNavigation';
