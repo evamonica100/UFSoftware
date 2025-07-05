@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { Input } from './ui/input';
 import SaveLoadCalculation from './SaveLoadCalculation';
 import { useAutoSave } from './AuthNavigation';
-import { ROCalculation } from '../lib/projectManager';
+import { ROCalculation } from '../../lib/projectManager';
 
 interface NormalizationData {
   operatingConditions: {
