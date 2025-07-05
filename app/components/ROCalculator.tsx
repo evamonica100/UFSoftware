@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import Chart from "chart.js/auto";
+import SaveLoadCalculation from './SaveLoadCalculation';
+import { useAutoSave } from './AuthNavigation';
+import { ROCalculation } from '../lib/projectManager';
 
 const ROCalculator = () => {
 const [inputs, setInputs] = useState({
@@ -115,6 +118,14 @@ scalingAnalysis: {
   const [calculating, setCalculating] = useState(false);
   const [iterationCount, setIterationCount] = useState(0);
   const [convergenceStatus, setConvergenceStatus] = useState('');
+   useAutoSave({
+    name: 'RO System Design Auto-save',
+    customFields: {
+      calculationType: 'ro_calculator',
+      inputs: inputs,
+      results: results
+    }
+  });
   
   // Constants and conversion factors
   const GPD_TO_M3H = 0.00015771; // Gallons per day to cubic meters per hour
@@ -633,6 +644,14 @@ const calculatePermeateOsmoticPressure = (feedOsmoticPressure, elementRejection)
 
 // REMOVED: No longer needed for simple rejection method
 // const calculatePermeateConcentration = ... (function deleted)
+  const handleLoadCalculation = (calculation: ROCalculation) => {
+    if (calculation.customFields?.inputs) {
+      setInputs(calculation.customFields.inputs);
+    }
+    if (calculation.customFields?.results) {
+      setResults(calculation.customFields.results);
+    }
+  };
   
   const resetCalculator = () => {
     // Reset inputs to empty values
@@ -2489,6 +2508,20 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
           </div>
         </div>
       </div>
+    </div>
+<SaveLoadCalculation
+        calculationData={{
+          name: 'RO System Design Calculation',
+          customFields: {
+            calculationType: 'ro_calculator',
+            inputs: inputs,
+            results: results,
+            elementResults: results.elementResults,
+            systemResults: results.systemResults
+          }
+        }}
+        onLoad={handleLoadCalculation}
+      />
     </div>
   );
 };
