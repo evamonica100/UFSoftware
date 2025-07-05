@@ -1,6 +1,9 @@
 "use client";
 
 import React, { useState } from 'react';
+import SaveLoadCalculation from './SaveLoadCalculation';
+import { useAutoSave } from './AuthNavigation';
+import { ROCalculation } from '../lib/projectManager';
 
 interface Inputs {
   tds: string;
@@ -69,6 +72,14 @@ const ScalingIndicesCalculator = () => {
   const [errors, setErrors] = useState<string[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [showWaterAnalysis, setShowWaterAnalysis] = useState(false);
+  useAutoSave({
+    name: 'Scaling Indices Auto-save',
+    scalingIndices: {
+      inputs: inputs,
+      results: results,
+      isAdvancedMode: isAdvancedMode
+    }
+  });
 
   // Convert ion concentration to CaCO3 equivalent
   // (mg/L of ion × (50.0 / MW)) where 50.0 is the equivalent weight of CaCO3
@@ -146,6 +157,19 @@ const ScalingIndicesCalculator = () => {
     newInputs[ion as keyof Inputs] = (currentValue + requiredAmount).toString();
     setInputs(newInputs);
   };
+  const handleLoadCalculation = (calculation: ROCalculation) => {
+    if (calculation.scalingIndices?.inputs) {
+      setInputs(calculation.scalingIndices.inputs);
+    }
+    if (calculation.scalingIndices?.results) {
+      setResults(calculation.scalingIndices.results);
+      setShowResults(true);
+    }
+    if (calculation.scalingIndices?.isAdvancedMode !== undefined) {
+      setIsAdvancedMode(calculation.scalingIndices.isAdvancedMode);
+    }
+  };
+
 
   const validateInputs = () => {
     const newErrors: string[] = [];
@@ -800,6 +824,19 @@ const ScalingIndicesCalculator = () => {
           )}
         </div>
       )}
+    </div>
+<SaveLoadCalculation
+        calculationData={{
+          name: 'Scaling Indices Calculation',
+          scalingIndices: {
+            inputs: inputs,
+            results: results,
+            isAdvancedMode: isAdvancedMode,
+            calculationType: 'scaling_indices'
+          }
+        }}
+        onLoad={handleLoadCalculation}
+      />
     </div>
   );
 };
