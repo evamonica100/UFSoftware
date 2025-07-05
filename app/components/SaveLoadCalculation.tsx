@@ -1,24 +1,6 @@
 // components/SaveLoadCalculation.tsx - Component to save/load calculations
 'use client';
 import { useState, useEffect } from 'react';
-// Add useCallback to loadProjects
-const loadProjects = useCallback(() => {
-  try {
-    const userProjects = getProjects();
-    setProjects(userProjects);
-    if (userProjects.length > 0 && !selectedProject) {
-      setSelectedProject(userProjects[0].id);
-    }
-  } catch (err) {
-    setError('Failed to load projects');
-  }
-}, [selectedProject]);
-
-useEffect(() => {
-  if (isAuthenticated()) {
-    loadProjects();
-  }
-}, [loadProjects]);
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
