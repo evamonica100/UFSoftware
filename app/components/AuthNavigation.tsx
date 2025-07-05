@@ -204,7 +204,7 @@ export function useAutoSave(
     const autoSaveInterval = setInterval(async () => {
       try {
         // Import quickSave function
-        const { quickSave } = await import('../lib/projectManager');
+        const { quickSave } = await import('../../lib/projectManager');
         await quickSave({
           name: `Auto-save ${new Date().toLocaleString()}`,
           description: 'Automatically saved calculation',
