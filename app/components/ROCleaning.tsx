@@ -133,7 +133,7 @@ const CleaningEvaluation = () => {
           </div>
         </div>
       </div>
-    </div>
+
 <SaveLoadCalculation
         calculationData={{
           name: 'Cleaning Evaluation Analysis',
