@@ -26,9 +26,12 @@ class AuthManager {
 
   private loadUsers(): void {
     try {
-      const stored = localStorage.getItem('ro_calc_users');
-      if (stored) {
-        this.users = JSON.parse(stored);
+      // Check if we're in browser environment
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        const stored = localStorage.getItem('ro_calc_users');
+        if (stored) {
+          this.users = JSON.parse(stored);
+        }
       }
     } catch (error) {
       console.error('Error loading users:', error);
@@ -38,7 +41,10 @@ class AuthManager {
 
   private saveUsers(): void {
     try {
-      localStorage.setItem('ro_calc_users', JSON.stringify(this.users));
+      // Check if we're in browser environment
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        localStorage.setItem('ro_calc_users', JSON.stringify(this.users));
+      }
     } catch (error) {
       console.error('Error saving users:', error);
     }
@@ -46,9 +52,12 @@ class AuthManager {
 
   private loadCurrentUser(): void {
     try {
-      const stored = localStorage.getItem('ro_calc_current_user');
-      if (stored) {
-        this.currentUser = JSON.parse(stored);
+      // Check if we're in browser environment
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        const stored = localStorage.getItem('ro_calc_current_user');
+        if (stored) {
+          this.currentUser = JSON.parse(stored);
+        }
       }
     } catch (error) {
       console.error('Error loading current user:', error);
@@ -58,12 +67,15 @@ class AuthManager {
 
   private saveCurrentUser(): void {
     try {
-      if (this.currentUser) {
-        localStorage.setItem('ro_calc_current_user', JSON.stringify(this.currentUser));
-        localStorage.setItem('isAuthenticated', 'true');
-      } else {
-        localStorage.removeItem('ro_calc_current_user');
-        localStorage.removeItem('isAuthenticated');
+      // Check if we're in browser environment
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        if (this.currentUser) {
+          localStorage.setItem('ro_calc_current_user', JSON.stringify(this.currentUser));
+          localStorage.setItem('isAuthenticated', 'true');
+        } else {
+          localStorage.removeItem('ro_calc_current_user');
+          localStorage.removeItem('isAuthenticated');
+        }
       }
     } catch (error) {
       console.error('Error saving current user:', error);
@@ -87,6 +99,11 @@ class AuthManager {
 
   // Initialize authorized users on first run
   private initializeAuthorizedUsers(): void {
+    // Only run in browser environment
+    if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+      return;
+    }
+
     // Check if users already exist
     if (this.users.length === 0) {
       console.log('Initializing authorized users...');
@@ -160,6 +177,12 @@ class AuthManager {
 
   login(credentials: UserCredentials): Promise<User> {
     return new Promise((resolve, reject) => {
+      // Check if we're in browser environment
+      if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+        reject(new Error('Login not available during server-side rendering'));
+        return;
+      }
+
       // Find user
       const user = this.users.find(u => 
         u.email.toLowerCase() === credentials.email.toLowerCase() &&
@@ -203,6 +226,10 @@ class AuthManager {
   }
 
   isAuthenticated(): boolean {
+    // Return false during server-side rendering
+    if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+      return false;
+    }
     return this.currentUser !== null;
   }
 
