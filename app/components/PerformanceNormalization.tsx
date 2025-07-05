@@ -3,6 +3,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { Input } from './ui/input';
+import SaveLoadCalculation from './SaveLoadCalculation';
+import { useAutoSave } from './AuthNavigation';
+import { ROCalculation } from '../lib/projectManager';
 
 interface NormalizationData {
   operatingConditions: {
@@ -94,6 +97,14 @@ const PerformanceNormalization = () => {
   useEffect(() => {
     calculateNormalizedFlow();
   }, [data]);
+  useAutoSave({
+    name: 'Performance Normalization Auto-save',
+    performanceData: data,
+    customFields: {
+      normalizedFlow: normalizedFlow,
+      deviationPercent: deviationPercent
+    }
+  });
 
   const handleInputChange = (category: 'operatingConditions' | 'baselineConditions', field: string, value: string) => {
     const numValue = parseFloat(value) || 0;
@@ -104,6 +115,11 @@ const PerformanceNormalization = () => {
         [field]: numValue
       }
     }));
+  };
+   const handleLoadCalculation = (calculation: ROCalculation) => {
+    if (calculation.performanceData) {
+      setData(calculation.performanceData);
+    }
   };
 
   return (
@@ -168,6 +184,19 @@ const PerformanceNormalization = () => {
           </div>
         </div>
       </div>
+    </div>
+ <SaveLoadCalculation
+        calculationData={{
+          name: 'Performance Normalization Analysis',
+          performanceData: data,
+          customFields: {
+            normalizedFlow: normalizedFlow,
+            deviationPercent: deviationPercent,
+            calculationType: 'performance_normalization'
+          }
+        }}
+        onLoad={handleLoadCalculation}
+      />
     </div>
   );
 };
