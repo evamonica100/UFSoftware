@@ -316,7 +316,7 @@ export function useSaveLoad() {
 
   const saveCalculation = async (
     projectId: string, 
-    calculationData: Partial<ROCalculation>
+    calculationData: Omit<ROCalculation, "id" | "createdAt" | "updatedAt">
   ) => {
     setIsSaving(true);
     try {
