@@ -117,10 +117,18 @@ const PerformanceNormalization = () => {
     }));
   };
    const handleLoadCalculation = (calculation: ROCalculation) => {
-    if (calculation.performanceData) {
-      setData(calculation.performanceData);
-    }
-  };
+if (calculation.customFields?.performanceData) {
+    setData(calculation.customFields.performanceData);
+  }
+// Also load the calculated results if they exist
+  if (calculation.customFields?.normalizedFlow !== undefined) {
+    setNormalizedFlow(calculation.customFields.normalizedFlow);
+  }
+  
+  if (calculation.customFields?.deviationPercent !== undefined) {
+    setDeviationPercent(calculation.customFields.deviationPercent);
+  }
+};
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-lg">
