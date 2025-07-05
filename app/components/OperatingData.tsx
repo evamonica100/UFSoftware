@@ -3,6 +3,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Line } from "react-chartjs-2";
 import * as XLSX from 'xlsx';
+import SaveLoadCalculation from './SaveLoadCalculation';
+import { useAutoSave } from './AuthNavigation';
+import { ROCalculation } from '../lib/projectManager';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -290,6 +293,14 @@ const OperatingData = () => {
     pipeVolume: 0,
     totalVolume: 0,
   });
+   useAutoSave({
+    name: 'Operating Data Auto-save',
+    operatingData: {
+      logs: logs,
+      referenceConditions: referenceConditions,
+      tankSizing: tankSizing
+    }
+  });
 
   const calculateResults = (
     entry: LogEntry,
@@ -408,6 +419,14 @@ const NSR = R; // Use calculated rejection directly for basic normalization
       ...currentEntry,
       date: new Date().toISOString().split("T")[0],
     });
+  };
+   const handleLoadCalculation = (calculation: ROCalculation) => {
+    if (calculation.operatingData?.logs) {
+      setLogs(calculation.operatingData.logs);
+    }
+    if (calculation.operatingData?.referenceConditions) {
+      setReferenceConditions(calculation.operatingData.referenceConditions);
+    }
   };
 
   // Load data from localStorage on component mount
@@ -1007,6 +1026,19 @@ const NSR = R; // Use calculated rejection directly for basic normalization
           </div>
         )}
       </div>
+    </div>
+<SaveLoadCalculation
+        calculationData={{
+          name: 'RO Operating Data Analysis',
+          operatingData: {
+            logs: logs,
+            referenceConditions: referenceConditions,
+            tankSizing: tankSizing,
+            cleaningVolumes: cleaningVolumes
+          }
+        }}
+        onLoad={handleLoadCalculation}
+      />
     </div>
   );
 };
