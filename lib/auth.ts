@@ -1,4 +1,4 @@
-// lib/auth.ts - Enhanced authentication with localStorage
+// lib/auth.ts - Enhanced authentication with pre-populated users and disabled registration
 export interface User {
   id: string;
   email: string;
@@ -21,6 +21,7 @@ class AuthManager {
   constructor() {
     this.loadUsers();
     this.loadCurrentUser();
+    this.initializeAuthorizedUsers(); // Add authorized users if needed
   }
 
   private loadUsers(): void {
@@ -84,47 +85,76 @@ class AuthManager {
     return hash.toString();
   }
 
+  // Initialize authorized users on first run
+  private initializeAuthorizedUsers(): void {
+    // Check if users already exist
+    if (this.users.length === 0) {
+      console.log('Initializing authorized users...');
+      
+      // Define your authorized users here
+      const authorizedUsers = [
+        {
+          email: 'eva.monica@zekindo.co.id',
+          company: 'Zekindo',
+          password: 'admin123',
+          name: 'Eva Monica'
+        },
+        {
+          email: 'admin@zekindo.co.id',
+          company: 'Zekindo',
+          password: 'zekindo2024',
+          name: 'Admin'
+        },
+        {
+          email: 'demo@company.com',
+          company: 'Demo Company',
+          password: 'demo123',
+          name: 'Demo User'
+        }
+        // Add more authorized users here as needed
+      ];
+
+      // Create each authorized user
+      authorizedUsers.forEach(userData => {
+        try {
+          const user: User = {
+            id: this.generateId(),
+            email: userData.email,
+            company: userData.company,
+            name: userData.name,
+            createdAt: new Date().toISOString(),
+            lastLogin: new Date().toISOString()
+          };
+
+          // Store password hash separately
+          const userAuth = {
+            userId: user.id,
+            passwordHash: this.hashPassword(userData.password)
+          };
+
+          this.users.push(user);
+
+          // Save auth info
+          const authData = JSON.parse(localStorage.getItem('ro_calc_auth') || '[]');
+          authData.push(userAuth);
+          localStorage.setItem('ro_calc_auth', JSON.stringify(authData));
+
+          console.log(`Added authorized user: ${userData.email}`);
+        } catch (error) {
+          console.error(`Error adding user ${userData.email}:`, error);
+        }
+      });
+
+      // Save all users
+      this.saveUsers();
+      console.log(`Initialized ${this.users.length} authorized users`);
+    }
+  }
+
+  // DISABLED: Registration is now blocked for security
   register(credentials: UserCredentials): Promise<User> {
     return new Promise((resolve, reject) => {
-      // Check if user already exists
-      const existingUser = this.users.find(u => 
-        u.email.toLowerCase() === credentials.email.toLowerCase() &&
-        u.company.toLowerCase() === credentials.company.toLowerCase()
-      );
-
-      if (existingUser) {
-        reject(new Error('User already exists with this email and company'));
-        return;
-      }
-
-      // Create new user
-      const user: User = {
-        id: this.generateId(),
-        email: credentials.email,
-        company: credentials.company,
-        name: credentials.email.split('@')[0], // Use email prefix as name
-        createdAt: new Date().toISOString(),
-        lastLogin: new Date().toISOString()
-      };
-
-      // Store password hash separately (in real app, this would be in secure backend)
-      const userAuth = {
-        userId: user.id,
-        passwordHash: this.hashPassword(credentials.password)
-      };
-
-      this.users.push(user);
-      this.saveUsers();
-
-      // Save auth info
-      const authData = JSON.parse(localStorage.getItem('ro_calc_auth') || '[]');
-      authData.push(userAuth);
-      localStorage.setItem('ro_calc_auth', JSON.stringify(authData));
-
-      this.currentUser = user;
-      this.saveCurrentUser();
-
-      resolve(user);
+      reject(new Error('Registration is disabled. Please contact your administrator at eva.monica@zekindo.co.id for access.'));
     });
   }
 
@@ -137,7 +167,7 @@ class AuthManager {
       );
 
       if (!user) {
-        reject(new Error('Invalid credentials'));
+        reject(new Error('Invalid credentials. Please contact eva.monica@zekindo.co.id if you need access.'));
         return;
       }
 
@@ -146,7 +176,7 @@ class AuthManager {
       const userAuth = authData.find((a: any) => a.userId === user.id);
 
       if (!userAuth || userAuth.passwordHash !== this.hashPassword(credentials.password)) {
-        reject(new Error('Invalid credentials'));
+        reject(new Error('Invalid credentials. Please check your password.'));
         return;
       }
 
@@ -157,11 +187,13 @@ class AuthManager {
       this.currentUser = user;
       this.saveCurrentUser();
 
+      console.log(`User logged in: ${user.email}`);
       resolve(user);
     });
   }
 
   logout(): void {
+    console.log(`User logged out: ${this.currentUser?.email}`);
     this.currentUser = null;
     this.saveCurrentUser();
   }
@@ -195,6 +227,83 @@ class AuthManager {
 
       resolve(this.currentUser);
     });
+  }
+
+  // Admin functions (for eva.monica@zekindo.co.id)
+  isAdmin(): boolean {
+    return this.currentUser?.email === 'eva.monica@zekindo.co.id';
+  }
+
+  getAllUsers(): User[] {
+    if (!this.isAdmin()) {
+      throw new Error('Admin access required');
+    }
+    return this.users;
+  }
+
+  // Manual user addition (admin only)
+  addUser(credentials: UserCredentials & { name?: string }): Promise<User> {
+    return new Promise((resolve, reject) => {
+      if (!this.isAdmin()) {
+        reject(new Error('Admin access required'));
+        return;
+      }
+
+      // Check if user already exists
+      const existingUser = this.users.find(u => 
+        u.email.toLowerCase() === credentials.email.toLowerCase() &&
+        u.company.toLowerCase() === credentials.company.toLowerCase()
+      );
+
+      if (existingUser) {
+        reject(new Error('User already exists with this email and company'));
+        return;
+      }
+
+      // Create new user
+      const user: User = {
+        id: this.generateId(),
+        email: credentials.email,
+        company: credentials.company,
+        name: credentials.name || credentials.email.split('@')[0],
+        createdAt: new Date().toISOString(),
+        lastLogin: new Date().toISOString()
+      };
+
+      // Store password hash
+      const userAuth = {
+        userId: user.id,
+        passwordHash: this.hashPassword(credentials.password)
+      };
+
+      this.users.push(user);
+      this.saveUsers();
+
+      // Save auth info
+      const authData = JSON.parse(localStorage.getItem('ro_calc_auth') || '[]');
+      authData.push(userAuth);
+      localStorage.setItem('ro_calc_auth', JSON.stringify(authData));
+
+      resolve(user);
+    });
+  }
+
+  // Reset all data (admin only - use with caution!)
+  resetAllData(): void {
+    if (!this.isAdmin()) {
+      throw new Error('Admin access required');
+    }
+    
+    localStorage.removeItem('ro_calc_users');
+    localStorage.removeItem('ro_calc_auth');
+    localStorage.removeItem('ro_calc_current_user');
+    localStorage.removeItem('isAuthenticated');
+    
+    this.users = [];
+    this.currentUser = null;
+    
+    // Reinitialize authorized users
+    this.initializeAuthorizedUsers();
   }
 }
 
