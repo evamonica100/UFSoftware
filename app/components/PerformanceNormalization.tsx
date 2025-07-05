@@ -184,7 +184,6 @@ const PerformanceNormalization = () => {
           </div>
         </div>
       </div>
-    </div>
  <SaveLoadCalculation
         calculationData={{
           name: 'Performance Normalization Analysis',
