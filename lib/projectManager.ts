@@ -1,4 +1,4 @@
-// lib/projectManager.ts - Save and manage RO calculations
+// lib/projectManager.ts - Save and manage RO calculations with SSR support
 import { getCurrentUser } from './auth';
 
 export interface ROCalculation {
@@ -67,9 +67,12 @@ class ProjectManager {
 
   private loadProjects(): void {
     try {
-      const stored = localStorage.getItem('ro_calc_projects');
-      if (stored) {
-        this.projects = JSON.parse(stored);
+      // Check if we're in browser environment
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        const stored = localStorage.getItem('ro_calc_projects');
+        if (stored) {
+          this.projects = JSON.parse(stored);
+        }
       }
     } catch (error) {
       console.error('Error loading projects:', error);
@@ -79,7 +82,10 @@ class ProjectManager {
 
   private saveProjects(): void {
     try {
-      localStorage.setItem('ro_calc_projects', JSON.stringify(this.projects));
+      // Check if we're in browser environment
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        localStorage.setItem('ro_calc_projects', JSON.stringify(this.projects));
+      }
     } catch (error) {
       console.error('Error saving projects:', error);
     }
@@ -101,6 +107,12 @@ class ProjectManager {
   createProject(name: string, description?: string): Promise<Project> {
     return new Promise((resolve, reject) => {
       try {
+        // Check if we're in browser environment
+        if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+          reject(new Error('Project creation not available during server-side rendering'));
+          return;
+        }
+
         const userId = this.getCurrentUserId();
         
         const project: Project = {
@@ -124,6 +136,11 @@ class ProjectManager {
 
   getProjects(): Project[] {
     try {
+      // Return empty array during SSR
+      if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+        return [];
+      }
+
       const userId = this.getCurrentUserId();
       return this.projects.filter(p => p.userId === userId);
     } catch (error) {
@@ -133,6 +150,11 @@ class ProjectManager {
 
   getProject(projectId: string): Project | null {
     try {
+      // Return null during SSR
+      if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+        return null;
+      }
+
       const userId = this.getCurrentUserId();
       return this.projects.find(p => p.id === projectId && p.userId === userId) || null;
     } catch (error) {
@@ -143,6 +165,12 @@ class ProjectManager {
   updateProject(projectId: string, updates: Partial<Project>): Promise<Project> {
     return new Promise((resolve, reject) => {
       try {
+        // Check if we're in browser environment
+        if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+          reject(new Error('Project update not available during server-side rendering'));
+          return;
+        }
+
         const userId = this.getCurrentUserId();
         const projectIndex = this.projects.findIndex(p => p.id === projectId && p.userId === userId);
         
@@ -168,6 +196,12 @@ class ProjectManager {
   deleteProject(projectId: string): Promise<boolean> {
     return new Promise((resolve, reject) => {
       try {
+        // Check if we're in browser environment
+        if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+          reject(new Error('Project deletion not available during server-side rendering'));
+          return;
+        }
+
         const userId = this.getCurrentUserId();
         const projectIndex = this.projects.findIndex(p => p.id === projectId && p.userId === userId);
         
@@ -189,6 +223,12 @@ class ProjectManager {
   addCalculation(projectId: string, calculation: Omit<ROCalculation, 'id' | 'createdAt' | 'updatedAt'>): Promise<ROCalculation> {
     return new Promise((resolve, reject) => {
       try {
+        // Check if we're in browser environment
+        if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+          reject(new Error('Calculation save not available during server-side rendering'));
+          return;
+        }
+
         const userId = this.getCurrentUserId();
         const projectIndex = this.projects.findIndex(p => p.id === projectId && p.userId === userId);
         
@@ -218,6 +258,12 @@ class ProjectManager {
   updateCalculation(projectId: string, calculationId: string, updates: Partial<ROCalculation>): Promise<ROCalculation> {
     return new Promise((resolve, reject) => {
       try {
+        // Check if we're in browser environment
+        if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+          reject(new Error('Calculation update not available during server-side rendering'));
+          return;
+        }
+
         const userId = this.getCurrentUserId();
         const projectIndex = this.projects.findIndex(p => p.id === projectId && p.userId === userId);
         
@@ -252,6 +298,12 @@ class ProjectManager {
   deleteCalculation(projectId: string, calculationId: string): Promise<boolean> {
     return new Promise((resolve, reject) => {
       try {
+        // Check if we're in browser environment
+        if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+          reject(new Error('Calculation deletion not available during server-side rendering'));
+          return;
+        }
+
         const userId = this.getCurrentUserId();
         const projectIndex = this.projects.findIndex(p => p.id === projectId && p.userId === userId);
         
@@ -282,6 +334,12 @@ class ProjectManager {
   quickSave(calculationData: Partial<ROCalculation>): Promise<ROCalculation> {
     return new Promise(async (resolve, reject) => {
       try {
+        // Check if we're in browser environment
+        if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+          reject(new Error('Quick save not available during server-side rendering'));
+          return;
+        }
+
         const projects = this.getProjects();
         let quickSaveProject = projects.find(p => p.name === 'Quick Saves');
         
@@ -315,6 +373,12 @@ class ProjectManager {
   importProject(projectData: string): Promise<Project> {
     return new Promise((resolve, reject) => {
       try {
+        // Check if we're in browser environment
+        if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+          reject(new Error('Project import not available during server-side rendering'));
+          return;
+        }
+
         const project = JSON.parse(projectData);
         
         // Generate new IDs to avoid conflicts
@@ -344,6 +408,11 @@ class ProjectManager {
   // Search functionality
   searchCalculations(query: string): ROCalculation[] {
     try {
+      // Return empty array during SSR
+      if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+        return [];
+      }
+
       const userId = this.getCurrentUserId();
       const userProjects = this.projects.filter(p => p.userId === userId);
       
