@@ -2507,6 +2507,7 @@ averageElementRecovery: calculateAverageElementRecovery(actualRecovery, totalEle
             </table>
           </div>
         </div>
+        </div>
 <SaveLoadCalculation
         calculationData={{
           name: 'RO System Design Calculation',
