@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Chart from "chart.js/auto";
 import SaveLoadCalculation from './SaveLoadCalculation';
 import { useAutoSave } from './AuthNavigation';
-import { ROCalculation } from '../lib/projectManager';
+import { ROCalculation } from '../../lib/projectManager';
 
 const ROCalculator = () => {
 const [inputs, setInputs] = useState({
