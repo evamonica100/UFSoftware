@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import SaveLoadCalculation from './SaveLoadCalculation';
-import { ROCalculation } from '../lib/projectManager';
+import { ROCalculation } from '../../lib/projectManager';
 
 const CleaningEvaluation = () => {
   const [performanceData, setPerformanceData] = useState({
