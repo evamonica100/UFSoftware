@@ -2,6 +2,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import SaveLoadCalculation from './SaveLoadCalculation';
+import { ROCalculation } from '../lib/projectManager';
 
 const CleaningEvaluation = () => {
   const [performanceData, setPerformanceData] = useState({
@@ -46,6 +48,14 @@ const CleaningEvaluation = () => {
       cleaningSolutionVolume: (cleaningSolutionVolume / 231).toFixed(2), // Convert to gallons
       tankVolume: (tankVolume / 231).toFixed(2) // Convert to gallons
     }));
+  };
+  const handleLoadCalculation = (calculation: ROCalculation) => {
+    if (calculation.customFields?.performanceData) {
+      setPerformanceData(calculation.customFields.performanceData);
+    }
+    if (calculation.customFields?.tankDimensions) {
+      setTankDimensions(calculation.customFields.tankDimensions);
+    }
   };
 
   return (
@@ -123,6 +133,18 @@ const CleaningEvaluation = () => {
           </div>
         </div>
       </div>
+    </div>
+<SaveLoadCalculation
+        calculationData={{
+          name: 'Cleaning Evaluation Analysis',
+          customFields: {
+            calculationType: 'cleaning_evaluation',
+            performanceData: performanceData,
+            tankDimensions: tankDimensions
+          }
+        }}
+        onLoad={handleLoadCalculation}
+      />
     </div>
   );
 };
