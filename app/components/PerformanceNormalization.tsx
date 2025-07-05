@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -96,7 +95,9 @@ const PerformanceNormalization = () => {
 
   useEffect(() => {
     calculateNormalizedFlow();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
+
   useAutoSave({
     name: 'Performance Normalization Auto-save',
     performanceData: data,
@@ -116,19 +117,20 @@ const PerformanceNormalization = () => {
       }
     }));
   };
-   const handleLoadCalculation = (calculation: ROCalculation) => {
-if (calculation.customFields?.performanceData) {
-    setData(calculation.customFields.performanceData);
-  }
-// Also load the calculated results if they exist
-  if (calculation.customFields?.normalizedFlow !== undefined) {
-    setNormalizedFlow(calculation.customFields.normalizedFlow);
-  }
-  
-  if (calculation.customFields?.deviationPercent !== undefined) {
-    setDeviationPercent(calculation.customFields.deviationPercent);
-  }
-};
+
+  const handleLoadCalculation = (calculation: ROCalculation) => {
+    if (calculation.customFields?.performanceData) {
+      setData(calculation.customFields.performanceData);
+    }
+    // Also load the calculated results if they exist
+    if (calculation.customFields?.normalizedFlow !== undefined) {
+      setNormalizedFlow(calculation.customFields.normalizedFlow);
+    }
+    
+    if (calculation.customFields?.deviationPercent !== undefined) {
+      setDeviationPercent(calculation.customFields.deviationPercent);
+    }
+  };
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-lg">
@@ -192,11 +194,12 @@ if (calculation.customFields?.performanceData) {
           </div>
         </div>
       </div>
- <SaveLoadCalculation
+
+      <SaveLoadCalculation
         calculationData={{
           name: 'Performance Normalization Analysis',
           customFields: {
-          performanceData: data,
+            performanceData: data,
             normalizedFlow: normalizedFlow,
             deviationPercent: deviationPercent,
             calculationType: 'performance_normalization'
