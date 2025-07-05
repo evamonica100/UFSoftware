@@ -421,13 +421,16 @@ const NSR = R; // Use calculated rejection directly for basic normalization
     });
   };
    const handleLoadCalculation = (calculation: ROCalculation) => {
-    if (calculation.operatingData?.logs) {
-      setLogs(calculation.operatingData.logs);
-    }
-    if (calculation.operatingData?.referenceConditions) {
-      setReferenceConditions(calculation.operatingData.referenceConditions);
-    }
-  };
+if (calculation.customFields?.logs) {
+    setLogs(calculation.customFields.logs);
+  }
+  if (calculation.customFields?.referenceConditions) {
+    setReferenceConditions(calculation.customFields.referenceConditions);
+  }
+  if (calculation.customFields?.tankSizing) {
+    setTankSizing(calculation.customFields.tankSizing);
+  }
+};
 
   // Load data from localStorage on component mount
   useEffect(() => {
@@ -1029,7 +1032,8 @@ const NSR = R; // Use calculated rejection directly for basic normalization
 <SaveLoadCalculation
         calculationData={{
           name: 'RO Operating Data Analysis',
-          operatingData: {
+          customFields: {
+      calculationType: 'operating_data',
             logs: logs,
             referenceConditions: referenceConditions,
             tankSizing: tankSizing,
