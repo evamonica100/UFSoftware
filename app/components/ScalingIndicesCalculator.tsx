@@ -158,17 +158,17 @@ const ScalingIndicesCalculator = () => {
     setInputs(newInputs);
   };
   const handleLoadCalculation = (calculation: ROCalculation) => {
-    if (calculation.scalingIndices?.inputs) {
-      setInputs(calculation.scalingIndices.inputs);
-    }
-    if (calculation.scalingIndices?.results) {
-      setResults(calculation.scalingIndices.results);
-      setShowResults(true);
-    }
-    if (calculation.scalingIndices?.isAdvancedMode !== undefined) {
-      setIsAdvancedMode(calculation.scalingIndices.isAdvancedMode);
-    }
-  };
+if (calculation.customFields?.inputs) {
+    setInputs(calculation.customFields.inputs);
+  }
+  if (calculation.customFields?.results) {
+    setResults(calculation.customFields.results);
+    setShowResults(true);
+  }
+  if (calculation.customFields?.isAdvancedMode !== undefined) {
+    setIsAdvancedMode(calculation.customFields.isAdvancedMode);
+  }
+};
 
 
   const validateInputs = () => {
@@ -827,7 +827,7 @@ const ScalingIndicesCalculator = () => {
 <SaveLoadCalculation
         calculationData={{
           name: 'Scaling Indices Calculation',
-          scalingIndices: {
+          customFields: {
             inputs: inputs,
             results: results,
             isAdvancedMode: isAdvancedMode,
