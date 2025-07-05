@@ -13,8 +13,8 @@ import {
   searchCalculations,
   Project,
   ROCalculation 
-} from '../lib/projectManager';
-import { getCurrentUser, logout } from '../lib/auth';
+} from '../../lib/projectManager';
+import { getCurrentUser, logout } from '../../lib/auth';
 
 export default function Dashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
