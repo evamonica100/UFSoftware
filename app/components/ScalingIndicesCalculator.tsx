@@ -824,8 +824,6 @@ const ScalingIndicesCalculator = () => {
           )}
         </div>
       )}
-    </div>
-     </div>
 <SaveLoadCalculation
         calculationData={{
           name: 'Scaling Indices Calculation',
