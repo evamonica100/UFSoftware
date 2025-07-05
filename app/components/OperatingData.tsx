@@ -1026,7 +1026,6 @@ const NSR = R; // Use calculated rejection directly for basic normalization
           </div>
         )}
       </div>
-    </div>
 <SaveLoadCalculation
         calculationData={{
           name: 'RO Operating Data Analysis',
