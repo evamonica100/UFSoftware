@@ -5,7 +5,7 @@ import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import Image from 'next/image';
 import logo from '../../public/zekindo-logo.png';
-import { login, register, isAuthenticated } from '../lib/auth';
+import { login, register, isAuthenticated } from '../../lib/auth';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
