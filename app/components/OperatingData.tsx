@@ -5,7 +5,7 @@ import { Line } from "react-chartjs-2";
 import * as XLSX from 'xlsx';
 import SaveLoadCalculation from './SaveLoadCalculation';
 import { useAutoSave } from './AuthNavigation';
-import { ROCalculation } from '../lib/projectManager';
+import { ROCalculation } from '../../lib/projectManager';
 import {
   Chart as ChartJS,
   CategoryScale,
