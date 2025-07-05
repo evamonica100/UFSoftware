@@ -2,7 +2,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
-import { getCurrentUser, logout, isAuthenticated } from '../lib/auth';
+import { getCurrentUser, logout, isAuthenticated } from '../../lib/auth';
 import Image from 'next/image';
 import logo from '../../public/zekindo-logo.png';
 
