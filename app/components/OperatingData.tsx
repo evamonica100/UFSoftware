@@ -301,6 +301,14 @@ const OperatingData = () => {
     totalVolume: 0,
   });
 
+  const handleGraphParameterChange = (parameter: string) => {
+    setSelectedGraphParameters(prev => 
+      prev.includes(parameter) 
+        ? prev.filter(p => p !== parameter)
+        : [...prev, parameter]
+    );
+  };
+
   const calculateResults = (entry: LogEntry, firstEntry?: LogEntry): CalculatedResults => {
     // Determine reference values
     const referenceEntry = useReferenceForNormalization ? referenceConditions : firstEntry || entry;
@@ -656,13 +664,11 @@ const OperatingData = () => {
                 <th className="px-4 py-2 border">Days</th>
                 <th className="px-4 py-2 border">Differential Pressure (bar)</th>
                 <th className="px-4 py-2 border">Recovery (%)</th>
-                <th className="px-4 py-2 border">Salt Rejection (%)</th>
                 <th className="px-4 py-2 border">Feed TDS (mg/L)</th>
                 <th className="px-4 py-2 border">Permeate TDS (mg/L)</th>
                 <th className="px-4 py-2 border">Net Driving Pressure (bar)</th>
                 <th className="px-4 py-2 border">Normalized Permeate Flow (m³/h)</th>
                 <th className="px-4 py-2 border">Normalized Salt Rejection (%)</th>
-                <th className="px-4 py-2 border">Normalized Differential Pressure (bar)</th>
                 <th className="px-4 py-2 border">Action</th>
               </tr>
             </thead>
@@ -673,13 +679,11 @@ const OperatingData = () => {
                   <td className="px-4 py-2 border">{log.days.toFixed(1)}</td>
                   <td className="px-4 py-2 border">{log.dP.toFixed(2)}</td>
                   <td className="px-4 py-2 border">{(log.F * 100).toFixed(2)}</td>
-                  <td className="px-4 py-2 border">{log.R.toFixed(2)}</td>
                   <td className="px-4 py-2 border">{log.feedTDS.toFixed(0)}</td>
                   <td className="px-4 py-2 border">{log.permeateTDS.toFixed(0)}</td>
                   <td className="px-4 py-2 border">{log.netDrivingPressure.toFixed(2)}</td>
                   <td className="px-4 py-2 border">{log.NQp.toFixed(2)}</td>
                   <td className="px-4 py-2 border">{(log.NSR * 100).toFixed(2)}</td>
-                  <td className="px-4 py-2 border">{log.NdP.toFixed(2)}</td>
                   <td className="px-4 py-2 border">
                     <button
                       onClick={() => setLogs(logs.filter((_, i) => i !== index))}
@@ -698,56 +702,131 @@ const OperatingData = () => {
       {/* Performance Graphs */}
       <div className="mt-8 mb-8">
         <h3 className="text-lg font-semibold mb-4">Performance Trends</h3>
-        <Line
-          data={{
-            labels: logs.map((log) => log.date),
-            datasets: [
-              {
-                label: "Normalized Permeate Flow (m³/h)",
-                data: logs.map((log) => log.NQp),
-                borderColor: "rgb(75, 192, 192)",
-                backgroundColor: "rgba(75, 192, 192, 0.2)",
+        
+        {/* Parameter Selection */}
+        <div className="mb-4 bg-gray-50 p-4 rounded-lg">
+          <h4 className="font-semibold mb-2">Select Parameters to Plot:</h4>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            {Object.entries(graphParameterOptions).map(([key, option]) => (
+              <label key={key} className="flex items-center space-x-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={selectedGraphParameters.includes(key)}
+                  onChange={() => handleGraphParameterChange(key)}
+                  className="rounded"
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Graph */}
+        {selectedGraphParameters.length > 0 ? (
+          <Line
+            data={{
+              labels: logs.map((log) => log.date),
+              datasets: selectedGraphParameters.map((param, index) => {
+                const option = graphParameterOptions[param];
+                const colors = [
+                  "rgb(75, 192, 192)", "rgb(255, 99, 132)", "rgb(153, 102, 255)",
+                  "rgb(255, 159, 64)", "rgb(255, 206, 86)", "rgb(54, 162, 235)",
+                  "rgb(231, 233, 237)", "rgb(255, 99, 255)", "rgb(99, 255, 132)"
+                ];
+                
+                let data;
+                switch (param) {
+                  case "NQp":
+                    data = logs.map((log) => log.NQp);
+                    break;
+                  case "netDrivingPressure":
+                    data = logs.map((log) => log.netDrivingPressure);
+                    break;
+                  case "NSR":
+                    data = logs.map((log) => log.NSR * 100);
+                    break;
+                  case "feedTDS":
+                    data = logs.map((log) => log.feedTDS);
+                    break;
+                  case "permeateTDS":
+                    data = logs.map((log) => log.permeateTDS);
+                    break;
+                  case "tempCorrectionFactor":
+                    data = logs.map((log) => log.tempCorrectionFactor);
+                    break;
+                  case "feedOsmoticPressure":
+                    data = logs.map((log) => log.feedOsmoticPressure);
+                    break;
+                  case "recovery":
+                    data = logs.map((log) => log.F * 100);
+                    break;
+                  case "dP":
+                    data = logs.map((log) => log.dP);
+                    break;
+                  default:
+                    data = [];
+                }
+
+                return {
+                  label: option.label,
+                  data: data,
+                  borderColor: colors[index % colors.length],
+                  backgroundColor: colors[index % colors.length].replace('rgb', 'rgba').replace(')', ', 0.2)'),
+                  tension: 0.1,
+                };
+              }),
+            }}
+            options={{
+              responsive: true,
+              interaction: {
+                mode: 'index' as const,
+                intersect: false,
               },
-              {
-                label: "Net Driving Pressure (bar)",
-                data: logs.map((log) => log.netDrivingPressure),
-                borderColor: "rgb(255, 99, 132)",
-                backgroundColor: "rgba(255, 99, 132, 0.2)",
-              },
-              {
-                label: "Normalized Salt Rejection (%)",
-                data: logs.map((log) => log.NSR * 100),
-                borderColor: "rgb(153, 102, 255)",
-                backgroundColor: "rgba(153, 102, 255, 0.2)",
-              },
-              {
-                label: "Normalized Differential Pressure (bar)",
-                data: logs.map((log) => log.NdP),
-                borderColor: "rgb(255, 159, 64)",
-                backgroundColor: "rgba(255, 159, 64, 0.2)",
-              },
-            ],
-          }}
-          options={{
-            responsive: true,
-            scales: {
-              x: {
-                display: true,
-                title: {
+              scales: {
+                x: {
                   display: true,
-                  text: "Date",
+                  title: {
+                    display: true,
+                    text: "Date",
+                  },
+                },
+                y: {
+                  display: true,
+                  title: {
+                    display: true,
+                    text: "Value (Various Units)",
+                  },
                 },
               },
-              y: {
-                display: true,
-                title: {
-                  display: true,
-                  text: "Value",
+              plugins: {
+                legend: {
+                  position: 'top' as const,
                 },
+                tooltip: {
+                  callbacks: {
+                    label: function(context) {
+                      const datasetLabel = context.dataset.label || '';
+                      const value = context.parsed.y;
+                      
+                      // Add appropriate units based on parameter
+                      let unit = '';
+                      if (datasetLabel.includes('Flow')) unit = ' m³/h';
+                      else if (datasetLabel.includes('Pressure')) unit = ' bar';
+                      else if (datasetLabel.includes('TDS')) unit = ' mg/L';
+                      else if (datasetLabel.includes('%') || datasetLabel.includes('Recovery') || datasetLabel.includes('Rejection')) unit = '%';
+                      
+                      return `${datasetLabel}: ${value.toFixed(2)}${unit}`;
+                    }
+                  }
+                }
               },
-            },
-          }}
-        />
+            }}
+          />
+        ) : (
+          <div className="text-center text-gray-500 py-8">
+            Please select at least one parameter to display the graph.
+          </div>
+        )}
       </div>
 
       {/* Cleaning Requirements Display */}
