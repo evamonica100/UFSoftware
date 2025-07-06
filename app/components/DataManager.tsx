@@ -1,4 +1,3 @@
-// app/components/DataManager.tsx
 'use client';
 import React, { useState } from 'react';
 import { Button } from './ui/button';
@@ -19,7 +18,6 @@ const DataManager = () => {
         return;
       }
 
-      // Collect all data from localStorage
       const dataToSave: any = {};
       const keys = [
         'operatingData',
@@ -88,7 +86,6 @@ const DataManager = () => {
       const result = await response.json();
       
       if (response.ok && result.data) {
-        // Load data into localStorage
         Object.keys(result.data).forEach(key => {
           if (key !== 'lastSaved') {
             localStorage.setItem(key, JSON.stringify(result.data[key]));
