@@ -56,6 +56,14 @@ interface CalculatedResults {
   NSP: number;
   NSR: number;
   NdP: number;
+  feedTDS: number;
+  permeateTDS: number;
+  avgConcentration: number;
+  feedOsmoticPressure: number;
+  permeateOsmoticPressure: number;
+  netDrivingPressure: number;
+  tempCorrectionFactor: number;
+  normalizedSaltPassage: number;
 }
 
 interface TankSizing {
@@ -81,12 +89,54 @@ const OperatingData = () => {
     permeateConductivity: 0,
   });
   
+  // Convert Conductivity to TDS using the specified formulas
+  const conductivityToTDS = (conductivity: number): number => {
+    if (conductivity > 7630) {
+      // High conductivity formula
+      return 8.01E-11 * Math.exp(Math.pow((-50.6458 - Math.log(conductivity)), 2) / 112.484);
+    } else {
+      // Low conductivity formula
+      return 7.70E-20 * Math.exp(Math.pow((-90.4756 - Math.log(conductivity)), 2) / 188.8844);
+    }
+  };
+
+  // Temperature conversion (if needed - assuming input is already in Celsius)
+  const fahrenheitToCelsius = (tempF: number): number => {
+    return (tempF - 32) * 5/9;
+  };
+
+  // Temperature Correction Factor
+  const calculateTempCorrectionFactor = (tempC: number): number => {
+    return Math.exp(2640 * ((1/298.15) - 1/(tempC + 273.15)));
+  };
+
+  // Average Concentration Calculation
+  const calculateAverageConcentration = (feedTDS: number, recovery: number): number => {
+    if (recovery >= 1 || recovery <= 0) return feedTDS; // Avoid division by zero or invalid recovery
+    return feedTDS * (Math.log(1/(1-recovery)) / recovery);
+  };
+
+  // Osmotic Pressure Calculation
+  const calculateOsmoticPressure = (tds: number, tempC: number): number => {
+    const tempK = tempC + 273.15;
+    return (0.0385 * tds * tempK) / (1000 - (tds/1000)) / 14.5;
+  };
+
+  // Net Driving Pressure Calculation
+  const calculateNetDrivingPressure = (
+    feedPressure: number, 
+    differentialPressure: number, 
+    feedOsmoticPressure: number, 
+    permeatePressure: number, 
+    permeateOsmoticPressure: number
+  ): number => {
+    return feedPressure - (differentialPressure/2) - feedOsmoticPressure - permeatePressure + permeateOsmoticPressure;
+  };
+  
   // Create Excel template for download
   const createExcelTemplate = () => {
-    // Create workbook and worksheet
     const wb = XLSX.utils.book_new();
     
-    // Create headers for template
     const headers = [
       "Date", 
       "Feed Flow (m³/h)", 
@@ -99,74 +149,46 @@ const OperatingData = () => {
       "Permeate Conductivity (µS/cm)"
     ];
     
-    // Add sample data row
     const sampleData = [
       new Date().toISOString().split("T")[0],
-      "100.0",
-      "800.0",
-      "0.0",
-      "780.0",
-      "45.0",
-      "25.0", 
-      "53000.0",
-      "300.0"
+      "100.0", "800.0", "0.0", "780.0", "45.0", "25.0", "53000.0", "300.0"
     ];
     
-    // Combine headers and sample data
     const wsData = [headers, sampleData];
-    
-    // Create worksheet
     const ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws['!cols'] = headers.map(() => ({ wch: 20 }));
     
-    // Add notes about the template format
-    ws['!cols'] = headers.map(() => ({ wch: 20 })); // Set column width
-    
-    // Add the worksheet to workbook
     XLSX.utils.book_append_sheet(wb, ws, "RO Operating Data");
     
-    // Generate template file
     const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const template = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     
-    // Create download link
     const url = URL.createObjectURL(template);
     const link = document.createElement('a');
     link.href = url;
     link.download = 'RO_Data_Template.xlsx';
-    
-    // Trigger download
     link.click();
-    
-    // Clean up
     URL.revokeObjectURL(url);
   };
   
   // Handle file import
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    
     if (!file) return;
     
     const reader = new FileReader();
-    
     reader.onload = (evt) => {
-      // Parse workbook
       const bstr = evt.target?.result;
       const wb = XLSX.read(bstr, { type: 'binary' });
-      
-      // Get first worksheet
       const wsname = wb.SheetNames[0];
       const ws = wb.Sheets[wsname];
-      
-      // Convert to JSON
       const data = XLSX.utils.sheet_to_json<any>(ws, { header: 1 });
       
-      // Skip header row and process data rows
       const importedLogs: LogEntry[] = [];
       
       for (let i = 1; i < data.length; i++) {
         const row = data[i];
-        if (row.length < 9) continue; // Skip incomplete rows
+        if (row.length < 9) continue;
         
         const entry: LogEntry = {
           date: row[0] || new Date().toISOString().split("T")[0],
@@ -183,20 +205,15 @@ const OperatingData = () => {
         importedLogs.push(entry);
       }
       
-      // Process imported data and add calculated results
       const processedLogs = importedLogs.map((entry, index) => {
         const firstEntry = index === 0 ? entry : importedLogs[0];
         const results = calculateResults(entry, firstEntry);
         return { ...entry, ...results };
       });
       
-      // Set the logs with the imported data
       setLogs(processedLogs);
-      
-      // Save to localStorage
       localStorage.setItem("operatingData", JSON.stringify(processedLogs));
       
-      // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -212,10 +229,8 @@ const OperatingData = () => {
       return;
     }
     
-    // Create workbook and worksheet
     const wb = XLSX.utils.book_new();
     
-    // Prepare data for export with all properties
     const exportData = logs.map(log => ({
       "Date": log.date,
       "Feed Flow (m³/h)": log.feedFlow,
@@ -228,53 +243,48 @@ const OperatingData = () => {
       "Permeate Conductivity (µS/cm)": log.permeateConductivity,
       "Days": log.days,
       "Differential Pressure (bar)": log.dP,
-      "Flow Factor (%)": log.F * 100,
       "Recovery (%)": log.R,
+      "Feed TDS (mg/L)": log.feedTDS,
+      "Permeate TDS (mg/L)": log.permeateTDS,
+      "Average Concentration (mg/L)": log.avgConcentration,
+      "Feed Osmotic Pressure (bar)": log.feedOsmoticPressure,
+      "Permeate Osmotic Pressure (bar)": log.permeateOsmoticPressure,
+      "Net Driving Pressure (bar)": log.netDrivingPressure,
+      "Temperature Correction Factor": log.tempCorrectionFactor,
       "Normalized Permeate Flow (m³/h)": log.NQp,
-      "Normalized System Pressure (bar)": log.NSP,
-      "Normalized Salt Rejection (%)": log.NSR,
+      "Normalized Salt Passage": log.normalizedSaltPassage,
+      "Normalized Salt Rejection (%)": log.NSR * 100,
       "Normalized Differential Pressure (bar)": log.NdP
     }));
     
-    // Convert to worksheet
     const ws = XLSX.utils.json_to_sheet(exportData);
-    
-    // Add the worksheet to workbook
     XLSX.utils.book_append_sheet(wb, ws, "RO Operating Data");
     
-    // Generate Excel file
     const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     
-    // Create download link
     const url = URL.createObjectURL(data);
     const link = document.createElement('a');
     link.href = url;
     link.download = 'RO_Operating_Data.xlsx';
-    
-    // Trigger download
     link.click();
-    
-    // Clean up
     URL.revokeObjectURL(url);
   };
 
   const [logs, setLogs] = useState<Array<LogEntry & CalculatedResults>>([]);
 
-  const [referenceConditions, setReferenceConditions] =
-    useState<ReferenceConditions>({
-      feedFlow: 100,
-      feedPressure: 800,
-      permeatePressure: 0,
-      concentratePressure: 780,
-      permeateFlow: 45,
-      feedTemp: 25,
-      feedConductivity: 53000,
-      permeateConductivity: 300,
-    });
+  const [referenceConditions, setReferenceConditions] = useState<ReferenceConditions>({
+    feedFlow: 100,
+    feedPressure: 800,
+    permeatePressure: 0,
+    concentratePressure: 780,
+    permeateFlow: 45,
+    feedTemp: 25,
+    feedConductivity: 53000,
+    permeateConductivity: 300,
+  });
 
-  const [useReferenceForNormalization, setUseReferenceForNormalization] =
-    useState<boolean>(false);
+  const [useReferenceForNormalization, setUseReferenceForNormalization] = useState<boolean>(false);
 
   const [tankSizing, setTankSizing] = useState<TankSizing>({
     vesselCount: 10,
@@ -291,104 +301,106 @@ const OperatingData = () => {
     totalVolume: 0,
   });
 
-  const calculateResults = (
-    entry: LogEntry,
-    firstEntry?: LogEntry,
-  ): CalculatedResults => {
-    // Determine reference values - either from first entry or from reference conditions
-    const referenceEntry = useReferenceForNormalization
-      ? referenceConditions
-      : firstEntry || entry;
+  const calculateResults = (entry: LogEntry, firstEntry?: LogEntry): CalculatedResults => {
+    // Determine reference values
+    const referenceEntry = useReferenceForNormalization ? referenceConditions : firstEntry || entry;
 
-    // Days calculation (unchanged)
-    const startDate = firstEntry
-      ? new Date(firstEntry.date)
-      : new Date(entry.date);
+    // Step 1: Convert Conductivity to TDS
+    const feedTDS = conductivityToTDS(entry.feedConductivity);
+    const permeateTDS = conductivityToTDS(entry.permeateConductivity);
+    const referenceFeedTDS = conductivityToTDS(referenceEntry.feedConductivity);
+    const referencePermeateTDS = conductivityToTDS(referenceEntry.permeateConductivity);
+
+    // Step 2: Basic Calculations
+    const startDate = firstEntry ? new Date(firstEntry.date) : new Date(entry.date);
     const currentDate = new Date(entry.date);
-    const days =
-      (currentDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
+    const days = (currentDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
 
-    // Basic calculations
     const dP = entry.feedPressure - entry.concentratePressure;
-    const F = entry.permeateFlow / entry.feedFlow;
-    const R = (1 - entry.permeateConductivity / entry.feedConductivity) * 100;
+    const F = entry.permeateFlow / entry.feedFlow; // Recovery as decimal
+    const R = (1 - entry.permeateConductivity / entry.feedConductivity) * 100; // Salt rejection %
 
-    // Calculate concentrate flow
-    const concentrateFlow = entry.feedFlow - entry.permeateFlow;
-    
-    // Temperature correction factor using industry standard approach
-    const calculateTCF = (temp: number): number => {
-      if (temp >= 25) {
-        return Math.exp(2640 * (1/298 - 1/(273 + temp)));
-      }
-      return Math.exp(3020 * (1/298 - 1/(273 + temp)));
-    };
-    
-    const currentTCF = calculateTCF(entry.feedTemp);
-    const referenceTCF = calculateTCF(referenceEntry.feedTemp);
-    
-    // Calculate average feed-concentrate TDS using log-mean approach
-    const calculateFeedConcentrate = (feedTDS: number, recovery: number): number => {
-      return feedTDS * (Math.log(1/(1-recovery))/recovery);
-    };
-    
-    // Use conductivity as proxy for TDS
-    const currentFeedTDS = entry.feedConductivity;
-    const referenceFeedTDS = referenceEntry.feedConductivity;
-    
-    const currentRecovery = F;
     const referenceRecovery = referenceEntry.permeateFlow / referenceEntry.feedFlow;
-    
-    const currentFC = calculateFeedConcentrate(currentFeedTDS, currentRecovery);
-    const referenceFC = calculateFeedConcentrate(referenceFeedTDS, referenceRecovery);
-    
-    // Calculate osmotic pressure using industry standard approach
-    const calculateOsmoticPressure = (tds: number, temp: number): number => {
-      if (tds < 20000) {
-        return (tds * (temp + 320)) / 491000;
-      }
-      return (tds * 1.12 * (273 + temp)) / 58500;
-    };
-    
-    const currentOP = calculateOsmoticPressure(currentFC, entry.feedTemp);
-    const referenceOP = calculateOsmoticPressure(referenceFC, referenceEntry.feedTemp);
-    
-    // Calculate net driving pressure (NDP)
-    const currentNDP = entry.feedPressure - (dP/2) - entry.permeatePressure - currentOP;
-    const referenceNDP = referenceEntry.feedPressure - 
-                        ((referenceEntry.feedPressure - referenceEntry.concentratePressure)/2) - 
-                        referenceEntry.permeatePressure - 
-                        referenceOP;
-    
-    // Normalized pressure drop calculation - accounts for flow rate changes
-    const refConFlow = referenceEntry.feedFlow - referenceEntry.permeateFlow;
-    const NdP = ((entry.permeateFlow + 2 * concentrateFlow) /
-        (referenceEntry.permeateFlow + 2 * refConFlow)) ** 2 * dP;
-    
-    // Normalized permeate flow using industry standard formula
-    // NQp = Qp * (NDPref/NDPact) * (TCFref/TCFact)
-    let NQp = 0;
-    if (currentNDP > 0 && referenceNDP > 0) {
-      NQp = entry.permeateFlow * (referenceNDP / currentNDP) * (referenceTCF / currentTCF);
-    }
-    
-    // Normalized system pressure adjusted for temperature effects
-    const NSP = entry.feedPressure / currentTCF;
-    
-    // Normalized salt rejection - using standard formula
-    // For salt rejection, typically use the ratio of salt passage
-    // Salt passage is (1 - rejection)
-    const currentSP = 1 - (R/100);
-    const referenceSP = 1 - ((1 - referenceEntry.permeateConductivity / referenceEntry.feedConductivity) * 100)/100;
-    
-    // Temperature correction for salt passage
-    const saltPassageTCF = Math.exp(0.05 * (entry.feedTemp - referenceEntry.feedTemp));
-    
-    // Normalized salt rejection
-    const normalizedSP = currentSP / saltPassageTCF;
-    const NSR = (1 - normalizedSP) * 100;
 
-    return { days, dP, F, R, NQp, NSP, NSR, NdP };
+    // Step 3: Temperature Correction Factor
+    const tempCorrectionFactor = calculateTempCorrectionFactor(entry.feedTemp);
+    const referenceTempCorrectionFactor = calculateTempCorrectionFactor(referenceEntry.feedTemp);
+
+    // Step 4: Average Concentration Calculation
+    const avgConcentration = calculateAverageConcentration(feedTDS, F);
+    const referenceAvgConcentration = calculateAverageConcentration(referenceFeedTDS, referenceRecovery);
+
+    // Step 5: Osmotic Pressure Calculations
+    const feedOsmoticPressure = calculateOsmoticPressure(avgConcentration, entry.feedTemp);
+    const permeateOsmoticPressure = calculateOsmoticPressure(permeateTDS, entry.feedTemp);
+    const referenceFeedOsmoticPressure = calculateOsmoticPressure(referenceAvgConcentration, referenceEntry.feedTemp);
+    const referencePermeateOsmoticPressure = calculateOsmoticPressure(referencePermeateTDS, referenceEntry.feedTemp);
+
+    // Step 6: Net Driving Pressure
+    const netDrivingPressure = calculateNetDrivingPressure(
+      entry.feedPressure, 
+      dP, 
+      feedOsmoticPressure, 
+      entry.permeatePressure, 
+      permeateOsmoticPressure
+    );
+
+    const referenceNetDrivingPressure = calculateNetDrivingPressure(
+      referenceEntry.feedPressure,
+      referenceEntry.feedPressure - referenceEntry.concentratePressure,
+      referenceFeedOsmoticPressure,
+      referenceEntry.permeatePressure,
+      referencePermeateOsmoticPressure
+    );
+
+    // Step 7: Normalization Calculations
+    
+    // Normalized Permeate Flow
+    let NQp = 0;
+    if (netDrivingPressure > 0 && referenceNetDrivingPressure > 0) {
+      NQp = entry.permeateFlow * 
+            (referenceNetDrivingPressure * referenceTempCorrectionFactor) / 
+            (netDrivingPressure * tempCorrectionFactor);
+    }
+
+    // Normalized Salt Passage
+    const currentSaltPassage = permeateTDS / feedTDS;
+    const referenceSaltPassage = referencePermeateTDS / referenceFeedTDS;
+    
+    const normalizedSaltPassage = currentSaltPassage * 
+      (entry.permeateFlow * referenceTempCorrectionFactor * referenceAvgConcentration * referenceEntry.feedConductivity) /
+      (referenceEntry.permeateFlow * tempCorrectionFactor * avgConcentration * entry.feedConductivity);
+
+    // Normalized Salt Rejection
+    const NSR = 1 - normalizedSaltPassage;
+
+    // Normalized System Pressure (simplified - using temperature correction)
+    const NSP = entry.feedPressure / tempCorrectionFactor;
+
+    // Normalized Differential Pressure (flow-corrected)
+    const concentrateFlow = entry.feedFlow - entry.permeateFlow;
+    const referenceConcentrateFlow = referenceEntry.feedFlow - referenceEntry.permeateFlow;
+    const NdP = Math.pow((entry.permeateFlow + 2 * concentrateFlow) / 
+                        (referenceEntry.permeateFlow + 2 * referenceConcentrateFlow), 2) * dP;
+
+    return { 
+      days, 
+      dP, 
+      F, 
+      R, 
+      NQp, 
+      NSP, 
+      NSR, 
+      NdP,
+      feedTDS,
+      permeateTDS,
+      avgConcentration,
+      feedOsmoticPressure,
+      permeateOsmoticPressure,
+      netDrivingPressure,
+      tempCorrectionFactor,
+      normalizedSaltPassage
+    };
   };
 
   const handleInputChange = (field: keyof LogEntry, value: string) => {
@@ -404,7 +416,6 @@ const OperatingData = () => {
     const newLogs = [...logs, { ...currentEntry, ...results }];
     setLogs(newLogs);
 
-    // Save logs and reference conditions to localStorage
     localStorage.setItem("operatingData", JSON.stringify(newLogs));
     localStorage.setItem(
       "referenceConditions",
@@ -420,12 +431,9 @@ const OperatingData = () => {
     });
   };
 
-  // Load data from localStorage on component mount
   useEffect(() => {
     const savedLogs = localStorage.getItem("operatingData");
-    const savedReferenceConditions = localStorage.getItem(
-      "referenceConditions",
-    );
+    const savedReferenceConditions = localStorage.getItem("referenceConditions");
 
     if (savedLogs) {
       setLogs(JSON.parse(savedLogs));
@@ -445,14 +453,8 @@ const OperatingData = () => {
     const pipeLengthInches = tankSizing.pipeLength * 12;
     const pipeRadius = tankSizing.pipeDiameter / 2;
 
-    const vesselVolume =
-      Math.PI *
-      Math.pow(vesselRadius, 2) *
-      vesselLengthInches *
-      tankSizing.vesselCount *
-      CONVERSION_FACTOR;
-    const pipeVolume =
-      Math.PI * Math.pow(pipeRadius, 2) * pipeLengthInches * CONVERSION_FACTOR;
+    const vesselVolume = Math.PI * Math.pow(vesselRadius, 2) * vesselLengthInches * tankSizing.vesselCount * CONVERSION_FACTOR;
+    const pipeVolume = Math.PI * Math.pow(pipeRadius, 2) * pipeLengthInches * CONVERSION_FACTOR;
     const totalVolume = vesselVolume + pipeVolume;
 
     setCleaningVolumes({
@@ -479,40 +481,6 @@ const OperatingData = () => {
     }));
   };
 
-  const showCleaningRequirements = () => {
-    if (logs.length < 1) {
-      alert("Need at least one data point to calculate cleaning requirements");
-      return;
-    }
-
-    const latest = logs[logs.length - 1];
-    // Use reference conditions as baseline if enabled, otherwise use first log entry
-    const baseline = useReferenceForNormalization
-      ? {
-          NQp: calculateResults(referenceConditions as LogEntry).NQp,
-          NSR: calculateResults(referenceConditions as LogEntry).NSR,
-          NdP: calculateResults(referenceConditions as LogEntry).NdP,
-        }
-      : logs[0];
-
-    const flowDecline = ((latest.NQp - baseline.NQp) / baseline.NQp) * 100;
-    const saltPassageIncrease =
-      ((latest.NSR - baseline.NSR) / baseline.NSR) * 100;
-    const pressureDropIncrease =
-      ((latest.NdP - baseline.NdP) / baseline.NdP) * 100;
-
-    alert(
-      `Cleaning Requirements Analysis:\n\n` +
-        `Flow Decline: ${flowDecline.toFixed(2)}% ${flowDecline <= -10 ? "(Cleaning Required)" : ""}\n` +
-        `Salt Passage Increase: ${saltPassageIncrease.toFixed(2)}% ${saltPassageIncrease >= 10 ? "(Cleaning Required)" : ""}\n` +
-        `Pressure Drop Increase: ${pressureDropIncrease.toFixed(2)}% ${pressureDropIncrease >= 15 ? "(Cleaning Required)" : ""}\n\n` +
-        `Cleaning is required when:\n` +
-        `• Normalized permeate flow drops 10%\n` +
-        `• Normalized salt passage increases 5-10%\n` +
-        `• Normalized pressure drop increases 10-15%`,
-    );
-  };
-
   return (
     <div className="bg-white p-6 rounded-lg shadow-lg">
       <h2 className="text-2xl font-bold text-blue-800 mb-6">
@@ -530,9 +498,7 @@ const OperatingData = () => {
               type="checkbox"
               id="useReference"
               checked={useReferenceForNormalization}
-              onChange={() =>
-                setUseReferenceForNormalization(!useReferenceForNormalization)
-              }
+              onChange={() => setUseReferenceForNormalization(!useReferenceForNormalization)}
               className="mr-2"
             />
             <label htmlFor="useReference" className="text-sm text-gray-700">
@@ -541,30 +507,22 @@ const OperatingData = () => {
           </div>
         </div>
         <p className="text-sm text-gray-600 mb-4">
-          These reference values will be used as the baseline for normalization
-          calculations when enabled. Otherwise, the first log entry will be used
-          as the baseline. Enter the value based on your operating data at start
-          up or based on the operating design of your RO membrane.
+          These reference values will be used as the baseline for normalization calculations when enabled. 
+          Otherwise, the first log entry will be used as the baseline. Enter the value based on your 
+          operating data at start up or based on the operating design of your RO membrane.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {Object.keys(referenceConditions).map((key) => (
             <div key={key} className="mb-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {key === "feedFlow"
-                  ? "Feed Flow (m³/h)"
-                  : key === "feedPressure"
-                    ? "Feed Press. (bar)"
-                    : key === "permeatePressure"
-                      ? "Perm. Press. (bar)"
-                      : key === "concentratePressure"
-                        ? "Conc. Press. (bar)"
-                        : key === "permeateFlow"
-                          ? "Perm. Flow (m³/h)"
-                          : key === "feedTemp"
-                            ? "Feed Temp. (°C)"
-                            : key === "feedConductivity"
-                              ? "Feed Cond. (µS/cm)"
-                              : "Perm. Cond. (µS/cm)"}
+                {key === "feedFlow" ? "Feed Flow (m³/h)" :
+                 key === "feedPressure" ? "Feed Press. (bar)" :
+                 key === "permeatePressure" ? "Perm. Press. (bar)" :
+                 key === "concentratePressure" ? "Conc. Press. (bar)" :
+                 key === "permeateFlow" ? "Perm. Flow (m³/h)" :
+                 key === "feedTemp" ? "Feed Temp. (°C)" :
+                 key === "feedConductivity" ? "Feed Cond. (µS/cm)" :
+                 "Perm. Cond. (µS/cm)"}
               </label>
               <input
                 type="number"
@@ -657,12 +615,7 @@ const OperatingData = () => {
                       <input
                         type="number"
                         value={currentEntry[key as keyof LogEntry]}
-                        onChange={(e) =>
-                          handleInputChange(
-                            key as keyof LogEntry,
-                            e.target.value,
-                          )
-                        }
+                        onChange={(e) => handleInputChange(key as keyof LogEntry, e.target.value)}
                         className="w-full"
                       />
                     </td>
@@ -701,23 +654,15 @@ const OperatingData = () => {
               <tr className="bg-gray-50">
                 <th className="px-4 py-2 border">Date</th>
                 <th className="px-4 py-2 border">Days</th>
-                <th className="px-4 py-2 border">
-                  Differential Pressure (bar)
-                </th>
-                <th className="px-4 py-2 border">Flow Factor (%)</th>
+                <th className="px-4 py-2 border">Differential Pressure (bar)</th>
                 <th className="px-4 py-2 border">Recovery (%)</th>
-                <th className="px-4 py-2 border">
-                  Normalized Permeate Flow (m³/h)
-                </th>
-                <th className="px-4 py-2 border">
-                  Normalized System Pressure (bar)
-                </th>
-                <th className="px-4 py-2 border">
-                  Normalized Salt Rejection (%)
-                </th>
-                <th className="px-4 py-2 border">
-                  Normalized Differential Pressure (bar)
-                </th>
+                <th className="px-4 py-2 border">Salt Rejection (%)</th>
+                <th className="px-4 py-2 border">Feed TDS (mg/L)</th>
+                <th className="px-4 py-2 border">Permeate TDS (mg/L)</th>
+                <th className="px-4 py-2 border">Net Driving Pressure (bar)</th>
+                <th className="px-4 py-2 border">Normalized Permeate Flow (m³/h)</th>
+                <th className="px-4 py-2 border">Normalized Salt Rejection (%)</th>
+                <th className="px-4 py-2 border">Normalized Differential Pressure (bar)</th>
                 <th className="px-4 py-2 border">Action</th>
               </tr>
             </thead>
@@ -727,19 +672,17 @@ const OperatingData = () => {
                   <td className="px-4 py-2 border">{log.date}</td>
                   <td className="px-4 py-2 border">{log.days.toFixed(1)}</td>
                   <td className="px-4 py-2 border">{log.dP.toFixed(2)}</td>
-                  <td className="px-4 py-2 border">
-                    {(log.F * 100).toFixed(2)}
-                  </td>
+                  <td className="px-4 py-2 border">{(log.F * 100).toFixed(2)}</td>
                   <td className="px-4 py-2 border">{log.R.toFixed(2)}</td>
+                  <td className="px-4 py-2 border">{log.feedTDS.toFixed(0)}</td>
+                  <td className="px-4 py-2 border">{log.permeateTDS.toFixed(0)}</td>
+                  <td className="px-4 py-2 border">{log.netDrivingPressure.toFixed(2)}</td>
                   <td className="px-4 py-2 border">{log.NQp.toFixed(2)}</td>
-                  <td className="px-4 py-2 border">{log.NSP.toFixed(2)}</td>
-                  <td className="px-4 py-2 border">{log.NSR.toFixed(2)}</td>
+                  <td className="px-4 py-2 border">{(log.NSR * 100).toFixed(2)}</td>
                   <td className="px-4 py-2 border">{log.NdP.toFixed(2)}</td>
                   <td className="px-4 py-2 border">
                     <button
-                      onClick={() =>
-                        setLogs(logs.filter((_, i) => i !== index))
-                      }
+                      onClick={() => setLogs(logs.filter((_, i) => i !== index))}
                       className="bg-red-600 text-white px-4 py-1 rounded hover:bg-red-700"
                     >
                       Delete
@@ -763,21 +706,25 @@ const OperatingData = () => {
                 label: "Normalized Permeate Flow (m³/h)",
                 data: logs.map((log) => log.NQp),
                 borderColor: "rgb(75, 192, 192)",
+                backgroundColor: "rgba(75, 192, 192, 0.2)",
               },
               {
-                label: "Normalized System Pressure (bar)",
-                data: logs.map((log) => log.NSP),
+                label: "Net Driving Pressure (bar)",
+                data: logs.map((log) => log.netDrivingPressure),
                 borderColor: "rgb(255, 99, 132)",
+                backgroundColor: "rgba(255, 99, 132, 0.2)",
               },
               {
                 label: "Normalized Salt Rejection (%)",
-                data: logs.map((log) => log.NSR),
+                data: logs.map((log) => log.NSR * 100),
                 borderColor: "rgb(153, 102, 255)",
+                backgroundColor: "rgba(153, 102, 255, 0.2)",
               },
               {
                 label: "Normalized Differential Pressure (bar)",
                 data: logs.map((log) => log.NdP),
                 borderColor: "rgb(255, 159, 64)",
+                backgroundColor: "rgba(255, 159, 64, 0.2)",
               },
             ],
           }}
@@ -805,76 +752,46 @@ const OperatingData = () => {
 
       {/* Cleaning Requirements Display */}
       <div className="mb-8">
-        <h3 className="text-lg font-semibold mb-4">
-          Cleaning Requirements Analysis
-        </h3>
+        <h3 className="text-lg font-semibold mb-4">Cleaning Requirements Analysis</h3>
         <div className="mb-2 text-sm text-gray-700">
           <strong>Baseline source:</strong>{" "}
-          {useReferenceForNormalization
-            ? "Reference Conditions"
-            : "First Log Entry"}
+          {useReferenceForNormalization ? "Reference Conditions" : "First Log Entry"}
         </div>
         {logs.length >= 1 && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Calculate baseline values based on reference or first log */}
             {(() => {
               const latest = logs[logs.length - 1];
               const baselineValues = useReferenceForNormalization
-                ? {
-                    NQp: calculateResults(referenceConditions as LogEntry).NQp,
-                    NSR: calculateResults(referenceConditions as LogEntry).NSR,
-                    NdP: calculateResults(referenceConditions as LogEntry).NdP,
-                  }
+                ? calculateResults(referenceConditions as LogEntry)
                 : logs[0];
 
-              const flowDecline =
-                ((latest.NQp - baselineValues.NQp) / baselineValues.NQp) * 100;
-              const saltPassageIncrease =
-                ((latest.NSR - baselineValues.NSR) / baselineValues.NSR) * 100;
-              const pressureDropIncrease =
-                ((latest.NdP - baselineValues.NdP) / baselineValues.NdP) * 100;
+              const flowDecline = ((latest.NQp - baselineValues.NQp) / baselineValues.NQp) * 100;
+              const saltRejectionChange = ((latest.NSR - baselineValues.NSR) / baselineValues.NSR) * 100;
+              const pressureDropIncrease = ((latest.NdP - baselineValues.NdP) / baselineValues.NdP) * 100;
 
               return (
                 <>
-                  <div
-                    className={`p-4 rounded-lg ${flowDecline <= -10 ? "bg-red-100" : "bg-green-100"}`}
-                  >
+                  <div className={`p-4 rounded-lg ${flowDecline <= -10 ? "bg-red-100" : "bg-green-100"}`}>
                     <h4 className="font-semibold">Normalized Flow Decline</h4>
-                    <p className="text-2xl font-bold">
-                      {flowDecline.toFixed(2)}%
-                    </p>
+                    <p className="text-2xl font-bold">{flowDecline.toFixed(2)}%</p>
                     <p className="text-sm mt-2">
-                      {flowDecline <= -10
-                        ? "Cleaning Required"
-                        : "Within Normal Range"}
+                      {flowDecline <= -10 ? "Cleaning Required" : "Within Normal Range"}
                     </p>
                   </div>
 
-                  <div
-                    className={`p-4 rounded-lg ${saltPassageIncrease >= 5 ? "bg-red-100" : "bg-green-100"}`}
-                  >
-                    <h4 className="font-semibold">Salt Passage Increase</h4>
-                    <p className="text-2xl font-bold">
-                      {saltPassageIncrease.toFixed(2)}%
-                    </p>
+                  <div className={`p-4 rounded-lg ${saltRejectionChange <= -5 ? "bg-red-100" : "bg-green-100"}`}>
+                    <h4 className="font-semibold">Salt Rejection Change</h4>
+                    <p className="text-2xl font-bold">{saltRejectionChange.toFixed(2)}%</p>
                     <p className="text-sm mt-2">
-                      {saltPassageIncrease >= 5
-                        ? "Cleaning Required"
-                        : "Within Normal Range"}
+                      {saltRejectionChange <= -5 ? "Cleaning Required" : "Within Normal Range"}
                     </p>
                   </div>
 
-                  <div
-                    className={`p-4 rounded-lg ${pressureDropIncrease >= 15 ? "bg-red-100" : "bg-green-100"}`}
-                  >
+                  <div className={`p-4 rounded-lg ${pressureDropIncrease >= 15 ? "bg-red-100" : "bg-green-100"}`}>
                     <h4 className="font-semibold">Pressure Drop Increase</h4>
-                    <p className="text-2xl font-bold">
-                      {pressureDropIncrease.toFixed(2)}%
-                    </p>
+                    <p className="text-2xl font-bold">{pressureDropIncrease.toFixed(2)}%</p>
                     <p className="text-sm mt-2">
-                      {pressureDropIncrease >= 15
-                        ? "Cleaning Required"
-                        : "Within Normal Range"}
+                      {pressureDropIncrease >= 15 ? "Cleaning Required" : "Within Normal Range"}
                     </p>
                   </div>
                 </>
@@ -891,87 +808,61 @@ const OperatingData = () => {
 
       {/* Cleaning Tank Sizing Calculator */}
       <div className="bg-gray-50 p-6 rounded-lg mb-8">
-        <h3 className="text-lg font-semibold mb-4">
-          Cleaning Tank Sizing Calculator
-        </h3>
+        <h3 className="text-lg font-semibold mb-4">Cleaning Tank Sizing Calculator</h3>
 
         {/* Vessel Specifications */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Number of Vessels
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Number of Vessels</label>
             <input
               type="number"
               value={tankSizing.vesselCount}
-              onChange={(e) =>
-                handleTankSizingChange("vesselCount", e.target.value)
-              }
+              onChange={(e) => handleTankSizingChange("vesselCount", e.target.value)}
               className="w-full p-2 border rounded"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Elements per Vessel
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Elements per Vessel</label>
             <input
               type="number"
               value={tankSizing.elementsPerVessel}
-              onChange={(e) =>
-                handleTankSizingChange("elementsPerVessel", e.target.value)
-              }
+              onChange={(e) => handleTankSizingChange("elementsPerVessel", e.target.value)}
               className="w-full p-2 border rounded"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Vessel Diameter (inches)
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Vessel Diameter (inches)</label>
             <input
               type="number"
               value={tankSizing.vesselDiameter}
-              onChange={(e) =>
-                handleTankSizingChange("vesselDiameter", e.target.value)
-              }
+              onChange={(e) => handleTankSizingChange("vesselDiameter", e.target.value)}
               className="w-full p-2 border rounded"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Vessel Length (feet)
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Vessel Length (feet)</label>
             <input
               type="number"
               value={tankSizing.vesselLength}
-              onChange={(e) =>
-                handleTankSizingChange("vesselLength", e.target.value)
-              }
+              onChange={(e) => handleTankSizingChange("vesselLength", e.target.value)}
               className="w-full p-2 border rounded"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Pipe Length (feet)
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Pipe Length (feet)</label>
             <input
               type="number"
               value={tankSizing.pipeLength}
-              onChange={(e) =>
-                handleTankSizingChange("pipeLength", e.target.value)
-              }
+              onChange={(e) => handleTankSizingChange("pipeLength", e.target.value)}
               className="w-full p-2 border rounded"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Pipe Diameter (inches)
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Pipe Diameter (inches)</label>
             <input
               type="number"
               value={tankSizing.pipeDiameter}
-              onChange={(e) =>
-                handleTankSizingChange("pipeDiameter", e.target.value)
-              }
+              onChange={(e) => handleTankSizingChange("pipeDiameter", e.target.value)}
               className="w-full p-2 border rounded"
             />
           </div>
@@ -990,32 +881,37 @@ const OperatingData = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <p className="text-sm text-gray-600">Vessel Volume:</p>
-                <p className="text-lg font-semibold">
-                  {cleaningVolumes.vesselVolume} gallons
-                </p>
+                <p className="text-lg font-semibold">{cleaningVolumes.vesselVolume} gallons</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Pipe Volume:</p>
-                <p className="text-lg font-semibold">
-                  {cleaningVolumes.pipeVolume} gallons
-                </p>
+                <p className="text-lg font-semibold">{cleaningVolumes.pipeVolume} gallons</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Total Volume:</p>
-                <p className="text-lg font-semibold">
-                  {cleaningVolumes.totalVolume} gallons
-                </p>
+                <p className="text-lg font-semibold">{cleaningVolumes.totalVolume} gallons</p>
               </div>
             </div>
 
             <div className="mt-4">
               <h4 className="font-semibold mb-2">Recommended Flow Rate:</h4>
-              <p className="text-lg">
-                {getRecommendedFlowRate(tankSizing.vesselDiameter)}
-              </p>
+              <p className="text-lg">{getRecommendedFlowRate(tankSizing.vesselDiameter)}</p>
             </div>
           </div>
         )}
+      </div>
+
+      {/* Calculation Details */}
+      <div className="bg-blue-50 p-6 rounded-lg">
+        <h3 className="text-lg font-semibold mb-4 text-blue-800">Calculation Method Details</h3>
+        <div className="text-sm text-blue-700 space-y-2">
+          <p><strong>TDS Conversion:</strong> Uses industry-standard formulas based on conductivity ranges (>7630 µS/cm vs ≤7630 µS/cm)</p>
+          <p><strong>Temperature Correction:</strong> Exponential correction factor: exp(2640 × ((1/298.15) - 1/(T+273.15)))</p>
+          <p><strong>Osmotic Pressure:</strong> Calculated using: 0.0385 × TDS × (T+273.15) / (1000 - TDS/1000) / 14.5</p>
+          <p><strong>Net Driving Pressure:</strong> Feed Pressure - (ΔP/2) - Feed Osmotic Pressure - Permeate Pressure + Permeate Osmotic Pressure</p>
+          <p><strong>Normalized Flow:</strong> Current Flow × (Baseline NDP × Baseline TCF) / (Current NDP × Current TCF)</p>
+          <p><strong>Normalized Salt Passage:</strong> Complex formula accounting for flow rates, temperature, and concentration effects</p>
+        </div>
       </div>
     </div>
   );
