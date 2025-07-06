@@ -3,9 +3,6 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import logo from '../public/zekindo-logo.png';
-import ProjectDetails from './components/ProjectDetails';
-import ScalingIndicesCalculator from './components/ScalingIndicesCalculator';
-import ROCalculator from './components/ROCalculator';
 import OperatingData from './components/OperatingData';
 
 export default function Home() {
@@ -62,9 +59,6 @@ export default function Home() {
       </header>
 
       <main className="flex-grow container mx-auto px-4 py-8">
-        {activeSection === 'project' && <ProjectDetails />}
-        {activeSection === 'water' && <ScalingIndicesCalculator />}
-        {activeSection === 'membrane' && <ROCalculator />}
         {activeSection === 'operating' && <OperatingData />}
       </main>
 
