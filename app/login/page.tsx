@@ -27,15 +27,12 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (response.ok) {
-        // Store user session data
         sessionStorage.setItem('isAuthenticated', 'true');
         sessionStorage.setItem('userEmail', formData.email);
         sessionStorage.setItem('userCompany', formData.company);
         sessionStorage.setItem('userPassword', formData.password);
         
-        // Load user's saved data
         await loadUserData();
-        
         window.location.href = '/';
       } else {
         alert(data.error || 'Login failed');
@@ -95,61 +92,105 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-blue-900 bg-opacity-80 flex flex-col items-center justify-center p-4">
-      <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
-        <div className="flex justify-center mb-6">
-          <Image src={logo} alt="Zekindo Chemicals Logo" width={200} height={80} style={{ height: 'auto' }} />
+      <div className="bg-white p-6 sm:p-8 rounded-lg shadow-lg w-full max-w-sm sm:max-w-md">
+        <div className="flex justify-center mb-4 sm:mb-6">
+          <Image 
+            src={logo} 
+            alt="Zekindo Chemicals Logo" 
+            width={180} 
+            height={72}
+            className="w-auto h-16 sm:h-20"
+            style={{ height: 'auto' }} 
+          />
         </div>
-        <h1 className="text-2xl font-bold text-center mb-6" style={{ color: '#007DB8' }}>
+        <h1 className="text-xl sm:text-2xl font-bold text-center mb-4 sm:mb-6 text-blue-800">
           Login to RO Membrane Calculator
         </h1>
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700">Email/Username</label>
-            <Input
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Email/Username
+            </label>
+            <input
               type="text"
               value={formData.email}
               onChange={(e) => setFormData({...formData, email: e.target.value})}
               required
               disabled={isLoading}
+              className="w-full px-3 py-3 text-base text-gray-900 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+              placeholder="Enter your email"
+              style={{ 
+                fontSize: '16px', // Prevents zoom on iOS
+                WebkitAppearance: 'none', // Removes iOS styling
+                color: '#1f2937' // Ensures text is dark
+              }}
             />
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700">Company</label>
-            <Input
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Company
+            </label>
+            <input
               type="text"
               value={formData.company}
               onChange={(e) => setFormData({...formData, company: e.target.value})}
               required
               disabled={isLoading}
+              className="w-full px-3 py-3 text-base text-gray-900 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+              placeholder="Enter your company name"
+              style={{ 
+                fontSize: '16px',
+                WebkitAppearance: 'none',
+                color: '#1f2937'
+              }}
             />
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700">Password</label>
-            <Input
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Password
+            </label>
+            <input
               type="password"
               value={formData.password}
               onChange={(e) => setFormData({...formData, password: e.target.value})}
               required
               disabled={isLoading}
+              className="w-full px-3 py-3 text-base text-gray-900 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+              placeholder="Enter your password"
+              style={{ 
+                fontSize: '16px',
+                WebkitAppearance: 'none',
+                color: '#1f2937'
+              }}
             />
           </div>
           
-          <Button type="submit" className="w-full" disabled={isLoading}>
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed text-base font-medium"
+          >
             {isLoading ? 'Logging in...' : 'Login'}
-          </Button>
+          </button>
         </form>
         
         <div className="mt-4 text-center space-y-2">
-          <Button variant="ghost" onClick={handleForgotPassword} className="text-sm">
+          <button 
+            onClick={handleForgotPassword}
+            className="text-sm text-blue-600 hover:text-blue-800 underline"
+          >
             Forgot Password?
-          </Button>
+          </button>
           <br />
-          <Button variant="ghost" onClick={handleHelpClick} className="text-sm">
+          <button 
+            onClick={handleHelpClick}
+            className="text-sm text-blue-600 hover:text-blue-800 underline"
+          >
             Need Help?
-          </Button>
+          </button>
         </div>
         
         <div className="mt-6 text-center text-xs text-gray-500">
