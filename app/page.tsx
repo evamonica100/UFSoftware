@@ -16,7 +16,6 @@ export default function Home() {
   }, []);
 
   const handleLogout = () => {
-    // Clear all session data
     sessionStorage.removeItem('isAuthenticated');
     sessionStorage.removeItem('userEmail');
     sessionStorage.removeItem('userCompany');
@@ -30,26 +29,6 @@ export default function Home() {
         <Image src={logo} alt="Zekindo Chemicals Logo" width={200} height={80} style={{ height: 'auto' }} />
         <div className="flex items-center space-x-4">
           <nav className="flex space-x-4">
-            {/* 
-            <button
-              onClick={() => setActiveSection('project')}
-              className={`px-4 py-2 rounded ${activeSection === 'project' ? 'bg-blue-100 text-blue-900' : 'text-blue-900'}`}
-            >
-              Project Details
-            </button>
-            <button
-              onClick={() => setActiveSection('water')}
-              className={`px-4 py-2 rounded ${activeSection === 'water' ? 'bg-blue-100 text-blue-900' : 'text-blue-900'}`}
-            >
-              Feed Water Analysis
-            </button>
-            <button
-              onClick={() => setActiveSection('membrane')}
-              className={`px-4 py-2 rounded ${activeSection === 'membrane' ? 'bg-blue-100 text-blue-900' : 'text-blue-900'}`}
-            >
-              RO Membrane Design
-            </button>
-            */}
             <button
               onClick={() => setActiveSection('operating')}
               className={`px-4 py-2 rounded ${activeSection === 'operating' ? 'bg-blue-100 text-blue-900' : 'text-blue-900'}`}
@@ -67,18 +46,8 @@ export default function Home() {
       </header>
       
       <main className="flex-grow container mx-auto px-4 py-8">
-        {/* Add the DataManager component here */}
         <DataManager />
-        
-        {/* Your existing content */}
         {activeSection === 'operating' && <OperatingData />}
-        
-        {/* Commented out sections - easy to re-enable later */}
-        {/* 
-        {activeSection === 'project' && <ProjectDetails />}
-        {activeSection === 'water' && <FeedWaterAnalysis />}
-        {activeSection === 'membrane' && <ROMembraneDesign />}
-        */}
       </main>
       
       <footer className="bg-white text-center py-6 mt-8">
