@@ -684,6 +684,7 @@ const OperatingData = () => {
                 <th className="px-4 py-2 border">Permeate TDS (mg/L)</th>
                 <th className="px-4 py-2 border">Net Driving Pressure (bar)</th>
                 <th className="px-4 py-2 border">Normalized Permeate Flow (m³/h)</th>
+                <th className="px-4 py-2 border">Normalized Salt Passage (%)</th>
                 <th className="px-4 py-2 border">Normalized Salt Rejection (%)</th>
                 <th className="px-4 py-2 border">Action</th>
               </tr>
@@ -699,6 +700,7 @@ const OperatingData = () => {
                   <td className="px-4 py-2 border">{log.permeateTDS.toFixed(0)}</td>
                   <td className="px-4 py-2 border">{log.netDrivingPressure.toFixed(2)}</td>
                   <td className="px-4 py-2 border">{log.NQp.toFixed(2)}</td>
+                  <td className="px-4 py-2 border">{(log.normalizedSaltPassage * 100).toFixed(2)}</td>
                   <td className="px-4 py-2 border">{(log.NSR * 100).toFixed(2)}</td>
                   <td className="px-4 py-2 border">
                     <button
