@@ -6,8 +6,8 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Zekindo Scale Indices Calculator',
-  description: 'Calculate scale indices for cooling water systems',
+  title: 'Zekindo RO Membrane Monitoring Software',
+  description: 'Monitor RO membrane performance with cleaning assessment tool',
 }
 
 export default function RootLayout({
