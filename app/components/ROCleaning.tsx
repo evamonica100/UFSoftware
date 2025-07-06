@@ -34,19 +34,19 @@ const CleaningEvaluation = () => {
     tankVolume: 0
   });
 
-  const calculateTankSize = () => {
-    // Volume calculation for minimum cleaning solution (allowing for 20% safety factor)
-    const elementVolume = Math.PI * Math.pow(tankDimensions.elementDiameter/2, 2) * 
-                         tankDimensions.elementLength * tankDimensions.numberOfElements;
-    const cleaningSolutionVolume = elementVolume * 5; // 5x element volume
-    const tankVolume = cleaningSolutionVolume * 1.2; // 20% safety factor
+const calculateTankSize = () => {
+  // Volume calculation for minimum cleaning solution (allowing for 20% safety factor)
+  const elementVolume = Math.PI * Math.pow(tankDimensions.elementDiameter/2, 2) * 
+                       tankDimensions.elementLength * tankDimensions.numberOfElements;
+  const cleaningSolutionVolume = elementVolume * 5; // 5x element volume
+  const tankVolume = cleaningSolutionVolume * 1.2; // 20% safety factor
 
-    setTankDimensions(prev => ({
-      ...prev,
-      cleaningSolutionVolume: (cleaningSolutionVolume / 231).toFixed(2), // Convert to gallons
-      tankVolume: (tankVolume / 231).toFixed(2) // Convert to gallons
-    }));
-  };
+  setTankDimensions(prev => ({
+    ...prev,
+    cleaningSolutionVolume: cleaningSolutionVolume / 231, // Keep as number
+    tankVolume: tankVolume / 231 // Keep as number
+  }));
+};
 
   return (
     <div className="mt-8">
@@ -117,9 +117,9 @@ const CleaningEvaluation = () => {
           <div className="bg-gray-50 p-4 rounded-lg">
             <h4 className="font-semibold mb-2">Results</h4>
             <div className="space-y-2">
-              <p>Cleaning Solution Volume: {tankDimensions.cleaningSolutionVolume} gallons</p>
-              <p>Recommended Tank Volume: {tankDimensions.tankVolume} gallons</p>
-            </div>
+  <p>Cleaning Solution Volume: {tankDimensions.cleaningSolutionVolume.toFixed(2)} gallons</p>
+  <p>Recommended Tank Volume: {tankDimensions.tankVolume.toFixed(2)} gallons</p>
+</div>
           </div>
         </div>
       </div>
