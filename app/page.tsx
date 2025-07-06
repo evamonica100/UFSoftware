@@ -6,7 +6,7 @@ import logo from '../public/zekindo-logo.png';
 import OperatingData from './components/OperatingData';
 
 export default function Home() {
-  const [activeSection, setActiveSection] = useState('project');
+  const [activeSection, setActiveSection] = useState('operating');
 
   useEffect(() => {
     const isAuthenticated = sessionStorage.getItem('isAuthenticated');
@@ -21,6 +21,7 @@ export default function Home() {
         <Image src={logo} alt="Zekindo Chemicals Logo" width={200} height={80} style={{ height: 'auto' }} />
         <div className="flex items-center space-x-4">
           <nav className="flex space-x-4">
+            {/* 
             <button
               onClick={() => setActiveSection('project')}
               className={`px-4 py-2 rounded ${activeSection === 'project' ? 'bg-blue-100 text-blue-900' : 'text-blue-900'}`}
@@ -39,6 +40,7 @@ export default function Home() {
             >
               RO Membrane Design
             </button>
+            */}
             <button
               onClick={() => setActiveSection('operating')}
               className={`px-4 py-2 rounded ${activeSection === 'operating' ? 'bg-blue-100 text-blue-900' : 'text-blue-900'}`}
