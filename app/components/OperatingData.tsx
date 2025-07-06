@@ -301,6 +301,22 @@ const OperatingData = () => {
     totalVolume: 0,
   });
 
+  const [selectedGraphParameters, setSelectedGraphParameters] = useState<string[]>([
+    "NQp", "netDrivingPressure", "NSR"
+  ]);
+
+  const graphParameterOptions = {
+    "NQp": { label: "Normalized Permeate Flow (m³/h)", color: "rgb(75, 192, 192)" },
+    "netDrivingPressure": { label: "Net Driving Pressure (bar)", color: "rgb(255, 99, 132)" },
+    "NSR": { label: "Normalized Salt Rejection (%)", color: "rgb(153, 102, 255)" },
+    "feedTDS": { label: "Feed TDS (mg/L)", color: "rgb(255, 159, 64)" },
+    "permeateTDS": { label: "Permeate TDS (mg/L)", color: "rgb(255, 206, 86)" },
+    "tempCorrectionFactor": { label: "Temperature Correction Factor", color: "rgb(54, 162, 235)" },
+    "feedOsmoticPressure": { label: "Feed Osmotic Pressure (bar)", color: "rgb(153, 102, 255)" },
+    "recovery": { label: "Recovery (%)", color: "rgb(255, 99, 132)" },
+    "dP": { label: "Differential Pressure (bar)", color: "rgb(75, 192, 192)" }
+  };
+
   const handleGraphParameterChange = (parameter: string) => {
     setSelectedGraphParameters(prev => 
       prev.includes(parameter) 
