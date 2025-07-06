@@ -1,13 +1,13 @@
 'use client';
-
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import logo from '../public/zekindo-logo.png';
 import OperatingData from './components/OperatingData';
+import DataManager from './components/DataManager';
 
 export default function Home() {
   const [activeSection, setActiveSection] = useState('operating');
-
+  
   useEffect(() => {
     const isAuthenticated = sessionStorage.getItem('isAuthenticated');
     if (!isAuthenticated) {
@@ -15,6 +15,15 @@ export default function Home() {
     }
   }, []);
 
+  const handleLogout = () => {
+    // Clear all session data
+    sessionStorage.removeItem('isAuthenticated');
+    sessionStorage.removeItem('userEmail');
+    sessionStorage.removeItem('userCompany');
+    sessionStorage.removeItem('userPassword');
+    window.location.href = '/login';
+  };
+  
   return (
     <div className="min-h-screen bg-blue-900 bg-opacity-80 flex flex-col text-black">
       <header className="bg-white text-white p-4 flex items-center justify-between">
@@ -49,21 +58,29 @@ export default function Home() {
             </button>
           </nav>
           <button 
-            onClick={() => {
-              sessionStorage.removeItem('isAuthenticated');
-              window.location.href = '/login';
-            }}
+            onClick={handleLogout}
             className="text-blue-900 hover:text-blue-700"
           >
             Logout
           </button>
         </div>
       </header>
-
+      
       <main className="flex-grow container mx-auto px-4 py-8">
+        {/* Add the DataManager component here */}
+        <DataManager />
+        
+        {/* Your existing content */}
         {activeSection === 'operating' && <OperatingData />}
+        
+        {/* Commented out sections - easy to re-enable later */}
+        {/* 
+        {activeSection === 'project' && <ProjectDetails />}
+        {activeSection === 'water' && <FeedWaterAnalysis />}
+        {activeSection === 'membrane' && <ROMembraneDesign />}
+        */}
       </main>
-
+      
       <footer className="bg-white text-center py-6 mt-8">
         <div className="text-gray-700">
           <p className="font-semibold">Connect with Us</p>
