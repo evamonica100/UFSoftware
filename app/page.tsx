@@ -95,13 +95,13 @@ export default function Home() {
       
       <footer className="bg-white text-center py-6 mt-8">
         <div className="text-gray-700">
-          <p className="font-semibold">Connect with Us</p>
-          <p>PT Zeus Kimiatama Indonesia (ZEKINDO)</p>
-          <p>Kantor Pusat & Operasional dan Pabrik 1</p>
-          <p>Kawasan Industri Jababeka, Jl.Jababeka IV Blok V Kav. 74-75</p>
-          <p>Jawa Barat, Indonesia 17530</p>
-          <p>Phone: <a href="tel:+6221 8934922" className="text-blue-800">+6221 8934922</a></p>
-          <p>Email: <a href="mailto:corsec@zekindo.co.id" className="text-blue-800">corsec@zekindo.co.id</a></p>
+          <p className="font-semibold">Distributed by:</p>
+          <p>PT Acme Indonesia</p>
+          <p>Head & Marketing Office</p>
+          <p>The Prominence Office Tower, 12ᵀᴴ Floor,</p>
+          <p>Jl. Jalur Sutera Barat No. 15, Alam Sutera, Tangerang, Indonesia</p>
+          <p>Phone: <a href="tel:+62 85974902615" className="text-blue-800">+62 85974902615</a></p>
+          <p>Email: <a href="mailto:eva.monica@zekindo.co.id" className="text-blue-800">eva.monica@zekindo.co.id</a></p>
         </div>
       </footer>
     </div>
