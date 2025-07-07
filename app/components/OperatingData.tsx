@@ -997,19 +997,6 @@ const OperatingData = () => {
           </div>
         )}
       </div>
-
-      {/* Calculation Details */}
-      <div className="bg-blue-50 p-6 rounded-lg">
-        <h3 className="text-lg font-semibold mb-4 text-blue-800">Calculation Method Details</h3>
-        <div className="text-sm text-blue-700 space-y-2">
-          <p><strong>TDS Conversion:</strong> Uses industry-standard formulas based on conductivity ranges (&gt;7630 µS/cm vs ≤7630 µS/cm)</p>
-          <p><strong>Temperature Correction:</strong> Exponential correction factor: exp(2640 × ((1/298.15) - 1/(T+273.15)))</p>
-          <p><strong>Osmotic Pressure:</strong> Calculated using: 0.0385 × TDS × (T+273.15) / (1000 - TDS/1000) / 14.5</p>
-          <p><strong>Net Driving Pressure:</strong> Feed Pressure - (ΔP/2) - Feed Osmotic Pressure - Permeate Pressure + Permeate Osmotic Pressure</p>
-          <p><strong>Normalized Flow:</strong> Current Flow × (Baseline NDP × Baseline TCF) / (Current NDP × Current TCF)</p>
-          <p><strong>Normalized Salt Passage:</strong> Complex formula accounting for flow rates, temperature, and concentration effects</p>
-        </div>
-      </div>
     </div>
   );
 };
