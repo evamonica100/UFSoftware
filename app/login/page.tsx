@@ -70,7 +70,7 @@ export default function LoginPage() {
 
   const handleForgotPassword = () => {
     alert("Forgot your password?\n\n" +
-          "Please contact our support team at:\n" +
+          "Please email our support team:\n" +
           "eva.monica@zekindo.co.id\n\n" +
           "Include your email and company name in your request.");
   };
@@ -82,12 +82,8 @@ export default function LoginPage() {
           "2. Enter your company name\n" +
           "3. Enter your password\n" +
           "4. Click Login to access the calculator\n\n" +
-          "Demo Credentials:\n" +
-          "Email: demo@company.com\n" +
-          "Company: Demo Company\n" +
-          "Password: demo123\n\n" +
           "For support or new account registration:\n" +
-          "Contact: eva.monica@zekindo.co.id");
+          "Email: eva.monica@zekindo.co.id");
   };
 
   return (
@@ -194,7 +190,7 @@ export default function LoginPage() {
         </div>
         
         <div className="mt-6 text-center text-xs text-gray-500">
-          Need a new account? Contact: eva.monica@zekindo.co.id
+          Need a new account? Email: eva.monica@zekindo.co.id
         </div>
       </div>
     </div>
