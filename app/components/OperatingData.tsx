@@ -858,28 +858,6 @@ const ROScalingAssessment = () => {
       </div>
 
       {/* Help Section */}
-      <div className="mt-8 bg-blue-50 p-4 rounded-lg">
-        <h3 className="text-lg font-semibold text-blue-700 mb-3">Understanding the Assessment</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-          <div>
-            <h4 className="font-semibold mb-2">Scaling Risk Levels:</h4>
-            <ul className="space-y-1 text-gray-700">
-              <li><span className="text-green-600">• Low Risk (&lt;80%):</span> Safe operation, minimal scaling potential</li>
-              <li><span className="text-yellow-600">• Moderate Risk (80-100%):</span> Monitor closely, prepare for cleaning</li>
-              <li><span className="text-red-600">• High Risk (&gt;100%):</span> Immediate action required</li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="font-semibold mb-2">Key Factors:</h4>
-            <ul className="space-y-1 text-gray-700">
-              <li><strong>Concentration Factor:</strong> How much salts concentrate in reject (target: &lt;5x)</li>
-              <li><strong>Recovery Rate:</strong> Percentage of feed converted to permeate (typical: 75-85%)</li>
-              <li><strong>Antiscalant Dose:</strong> Chemical dose to prevent scaling (typical: 2-4 mg/L)</li>
-              <li><strong>Membrane Rejection:</strong> Overall salt rejection efficiency (typical: 99%+)</li>
-            </ul>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
