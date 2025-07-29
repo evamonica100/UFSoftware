@@ -1,14 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Line } from "react-chartjs-2";
+import { Bar } from "react-chartjs-2";
 import * as XLSX from 'xlsx';
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
-  PointElement,
-  LineElement,
+  BarElement,
   Title,
   Tooltip,
   Legend,
@@ -17,988 +16,872 @@ import {
 ChartJS.register(
   CategoryScale,
   LinearScale,
-  PointElement,
-  LineElement,
+  BarElement,
   Title,
   Tooltip,
   Legend,
 );
 
-interface LogEntry {
-  date: string;
+interface WaterAnalysis {
+  // Cations (mg/L)
+  ca: number;
+  mg: number;
+  na: number;
+  k: number;
+  // Anions (mg/L)
+  hco3: number;
+  cl: number;
+  so4: number;
+  f: number;
+  sio2: number;
+  // Other parameters
+  tds: number;
+  ph: number;
+  temperature: number;
+}
+
+interface SystemParameters {
   feedFlow: number;
-  feedPressure: number;
-  permeatePressure: number;
-  concentratePressure: number;
   permeateFlow: number;
-  feedTemp: number;
-  feedConductivity: number;
-  permeateConductivity: number;
+  recovery: number;
+  membraneRejection: number; // Overall rejection %
+  antiscalantDose: number;
 }
 
-interface ReferenceConditions {
-  feedFlow: number;
-  feedPressure: number;
-  permeatePressure: number;
-  concentratePressure: number;
-  permeateFlow: number;
-  feedTemp: number;
-  feedConductivity: number;
-  permeateConductivity: number;
+interface ScalingResults {
+  concentrationFactor: number;
+  feedComposition: WaterAnalysis;
+  permeateComposition: WaterAnalysis;
+  concentrateComposition: WaterAnalysis;
+  scalingSaturation: {
+    caco3: { noChem: number; withTreatment: number; };
+    caso4: { noChem: number; withTreatment: number; };
+    sio2: { noChem: number; withTreatment: number; };
+    caf2: { noChem: number; withTreatment: number; };
+  };
+  antiscalantEfficiency: number;
 }
 
-interface CalculatedResults {
-  days: number;
-  dP: number;
-  F: number;
-  R: number;
-  NQp: number;
-  NSP: number;
-  NSR: number;
-  NdP: number;
-  feedTDS: number;
-  permeateTDS: number;
-  avgConcentration: number;
-  feedOsmoticPressure: number;
-  permeateOsmoticPressure: number;
-  netDrivingPressure: number;
-  tempCorrectionFactor: number;
-  normalizedSaltPassage: number;
-}
-
-interface TankSizing {
-  vesselCount: number;
-  elementsPerVessel: number;
-  vesselDiameter: number;
-  vesselLength: number;
-  pipeLength: number;
-  pipeDiameter: number;
-}
-
-const OperatingData = () => {
+const ROScalingAssessment = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [currentEntry, setCurrentEntry] = useState<LogEntry>({
-    date: new Date().toISOString().split("T")[0],
-    feedFlow: 0,
-    feedPressure: 0,
-    permeatePressure: 0,
-    concentratePressure: 0,
-    permeateFlow: 0,
-    feedTemp: 0,
-    feedConductivity: 0,
-    permeateConductivity: 0,
-  });
   
-  // Convert Conductivity to TDS using the specified formulas
-  const conductivityToTDS = (conductivity: number): number => {
-    if (conductivity > 7630) {
-      // High conductivity formula
-      return 8.01E-11 * Math.exp(Math.pow((-50.6458 - Math.log(conductivity)), 2) / 112.484);
-    } else {
-      // Low conductivity formula
-      return 7.70E-20 * Math.exp(Math.pow((-90.4756 - Math.log(conductivity)), 2) / 188.8844);
+  const [waterAnalysis, setWaterAnalysis] = useState<WaterAnalysis>({
+    ca: 355,
+    mg: 1150,
+    na: 10700,
+    k: 360,
+    hco3: 152.39,
+    cl: 18400,
+    so4: 2900,
+    f: 1.8,
+    sio2: 1.0,
+    tds: 34020,
+    ph: 6.8,
+    temperature: 32,
+  });
+
+  const [systemParams, setSystemParams] = useState<SystemParameters>({
+    feedFlow: 398,
+    permeateFlow: 326.4,
+    recovery: 82,
+    membraneRejection: 99.3, // Overall rejection %
+    antiscalantDose: 2.0, // mg/L
+  });
+
+  const [results, setResults] = useState<ScalingResults | null>(null);
+
+  // Calculate concentration factor
+  const calculateConcentrationFactor = (recovery: number): number => {
+    return 1 / (1 - recovery / 100);
+  };
+
+  // Calculate antiscalant efficiency based on dose
+  const calculateAntiscalantEfficiency = (dose: number): number => {
+    // Simplified efficiency: 2 mg/L gives ~50% reduction in scaling potential
+    const efficiency = Math.min(dose * 25, 80); // Max 80% reduction
+    return efficiency / 100;
+  };
+
+  // Calculate scaling saturation percentage
+  const calculateScalingSaturation = (
+    feedConc: number,
+    concentrateConc: number,
+    compound: string
+  ): number => {
+    let saturationLimit = 100; // Base 100% saturation
+    
+    // Different compounds have different saturation limits
+    switch (compound) {
+      case 'caco3':
+        // CaCO3 scaling based on Ca and HCO3 concentrations
+        saturationLimit = 2500; // mg/L equivalent
+        return (concentrateConc / saturationLimit) * 100;
+        
+      case 'caso4':
+        // CaSO4 scaling - more soluble than CaCO3
+        saturationLimit = 2000; // mg/L equivalent  
+        return (concentrateConc / saturationLimit) * 100;
+        
+      case 'sio2':
+        // SiO2 scaling limit
+        saturationLimit = 120; // mg/L
+        return (concentrateConc / saturationLimit) * 100;
+        
+      case 'caf2':
+        // CaF2 scaling - less common
+        saturationLimit = 16; // mg/L
+        return (concentrateConc / saturationLimit) * 100;
+        
+      default:
+        return 0;
     }
   };
 
-  // Temperature conversion (if needed - assuming input is already in Celsius)
-  const fahrenheitToCelsius = (tempF: number): number => {
-    return (tempF - 32) * 5/9;
-  };
+  // Main calculation function
+  const calculateScaling = (): ScalingResults => {
+    const concFactor = calculateConcentrationFactor(systemParams.recovery);
+    const rejectionDecimal = systemParams.membraneRejection / 100;
+    const antiscalantEff = calculateAntiscalantEfficiency(systemParams.antiscalantDose);
 
-  // Temperature Correction Factor
-  const calculateTempCorrectionFactor = (tempC: number): number => {
-    return Math.exp(2640 * ((1/298.15) - 1/(tempC + 273.15)));
-  };
+    // Calculate permeate composition (what passes through membrane)
+    const permeateComp: WaterAnalysis = {
+      ca: waterAnalysis.ca * (1 - rejectionDecimal),
+      mg: waterAnalysis.mg * (1 - rejectionDecimal),
+      na: waterAnalysis.na * (1 - rejectionDecimal),
+      k: waterAnalysis.k * (1 - rejectionDecimal),
+      hco3: waterAnalysis.hco3 * (1 - rejectionDecimal),
+      cl: waterAnalysis.cl * (1 - rejectionDecimal),
+      so4: waterAnalysis.so4 * (1 - rejectionDecimal),
+      f: waterAnalysis.f * (1 - rejectionDecimal),
+      sio2: waterAnalysis.sio2 * (1 - rejectionDecimal),
+      tds: waterAnalysis.tds * (1 - rejectionDecimal),
+      ph: waterAnalysis.ph, // pH doesn't concentrate linearly
+      temperature: waterAnalysis.temperature,
+    };
 
-  // Average Concentration Calculation
-  const calculateAverageConcentration = (feedTDS: number, recovery: number): number => {
-    if (recovery >= 1 || recovery <= 0) return feedTDS; // Avoid division by zero or invalid recovery
-    return feedTDS * (Math.log(1/(1-recovery)) / recovery);
-  };
+    // Calculate concentrate composition (concentrated reject stream)
+    const concentrateComp: WaterAnalysis = {
+      ca: waterAnalysis.ca * concFactor,
+      mg: waterAnalysis.mg * concFactor,
+      na: waterAnalysis.na * concFactor,
+      k: waterAnalysis.k * concFactor,
+      hco3: waterAnalysis.hco3 * concFactor,
+      cl: waterAnalysis.cl * concFactor,
+      so4: waterAnalysis.so4 * concFactor,
+      f: waterAnalysis.f * concFactor,
+      sio2: waterAnalysis.sio2 * concFactor,
+      tds: waterAnalysis.tds * concFactor,
+      ph: waterAnalysis.ph + (0.2 * Math.log10(concFactor)), // pH increases slightly
+      temperature: waterAnalysis.temperature,
+    };
 
-  // Osmotic Pressure Calculation
-  const calculateOsmoticPressure = (tds: number, tempC: number): number => {
-    const tempK = tempC + 273.15;
-    return (0.0385 * tds * tempK) / (1000 - (tds/1000)) / 14.5;
-  };
-
-  // Net Driving Pressure Calculation
-  const calculateNetDrivingPressure = (
-    feedPressure: number, 
-    differentialPressure: number, 
-    feedOsmoticPressure: number, 
-    permeatePressure: number, 
-    permeateOsmoticPressure: number
-  ): number => {
-    return feedPressure - (differentialPressure/2) - feedOsmoticPressure - permeatePressure + permeateOsmoticPressure;
-  };
-  
-  // Create Excel template for download
-  const createExcelTemplate = () => {
-    const wb = XLSX.utils.book_new();
-    
-    const headers = [
-      "Date", 
-      "Feed Flow (m³/h)", 
-      "Feed Pressure (bar)", 
-      "Permeate Pressure (bar)", 
-      "Concentrate Pressure (bar)", 
-      "Permeate Flow (m³/h)", 
-      "Feed Temp (°C)", 
-      "Feed Conductivity (µS/cm)", 
-      "Permeate Conductivity (µS/cm)"
-    ];
-    
-    const sampleData = [
-      new Date().toISOString().split("T")[0],
-      "100.0", "800.0", "0.0", "780.0", "45.0", "25.0", "53000.0", "300.0"
-    ];
-    
-    const wsData = [headers, sampleData];
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-    ws['!cols'] = headers.map(() => ({ wch: 20 }));
-    
-    XLSX.utils.book_append_sheet(wb, ws, "RO Operating Data");
-    
-    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const template = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    
-    const url = URL.createObjectURL(template);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'RO_Data_Template.xlsx';
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-  
-  // Handle file import
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const bstr = evt.target?.result;
-      const wb = XLSX.read(bstr, { type: 'binary' });
-      const wsname = wb.SheetNames[0];
-      const ws = wb.Sheets[wsname];
-      const data = XLSX.utils.sheet_to_json<any>(ws, { header: 1 });
-      
-      const importedLogs: LogEntry[] = [];
-      
-      for (let i = 1; i < data.length; i++) {
-        const row = data[i];
-        if (row.length < 9) continue;
-        
-        const entry: LogEntry = {
-          date: row[0] || new Date().toISOString().split("T")[0],
-          feedFlow: parseFloat(row[1]) || 0,
-          feedPressure: parseFloat(row[2]) || 0,
-          permeatePressure: parseFloat(row[3]) || 0,
-          concentratePressure: parseFloat(row[4]) || 0,
-          permeateFlow: parseFloat(row[5]) || 0,
-          feedTemp: parseFloat(row[6]) || 0,
-          feedConductivity: parseFloat(row[7]) || 0,
-          permeateConductivity: parseFloat(row[8]) || 0,
-        };
-        
-        importedLogs.push(entry);
-      }
-      
-      const processedLogs = importedLogs.map((entry, index) => {
-        const firstEntry = index === 0 ? entry : importedLogs[0];
-        const results = calculateResults(entry, firstEntry);
-        return { ...entry, ...results };
-      });
-      
-      setLogs(processedLogs);
-      localStorage.setItem("operatingData", JSON.stringify(processedLogs));
-      
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+    // Calculate scaling saturations
+    const scalingSaturation = {
+      caco3: {
+        noChem: calculateScalingSaturation(waterAnalysis.ca, concentrateComp.ca, 'caco3'),
+        withTreatment: calculateScalingSaturation(waterAnalysis.ca, concentrateComp.ca, 'caco3') * (1 - antiscalantEff)
+      },
+      caso4: {
+        noChem: calculateScalingSaturation(waterAnalysis.ca, concentrateComp.ca + concentrateComp.so4, 'caso4'),
+        withTreatment: calculateScalingSaturation(waterAnalysis.ca, concentrateComp.ca + concentrateComp.so4, 'caso4') * (1 - antiscalantEff)
+      },
+      sio2: {
+        noChem: calculateScalingSaturation(waterAnalysis.sio2, concentrateComp.sio2, 'sio2'),
+        withTreatment: calculateScalingSaturation(waterAnalysis.sio2, concentrateComp.sio2, 'sio2') * (1 - antiscalantEff * 0.3) // Less effective on SiO2
+      },
+      caf2: {
+        noChem: calculateScalingSaturation(waterAnalysis.f, concentrateComp.f, 'caf2'),
+        withTreatment: calculateScalingSaturation(waterAnalysis.f, concentrateComp.f, 'caf2') * (1 - antiscalantEff * 0.8)
       }
     };
-    
-    reader.readAsBinaryString(file);
+
+    return {
+      concentrationFactor: concFactor,
+      feedComposition: waterAnalysis,
+      permeateComposition: permeateComp,
+      concentrateComposition: concentrateComp,
+      scalingSaturation,
+      antiscalantEfficiency: antiscalantEff * 100, // Convert to percentage
+    };
   };
-  
-  // Export current data to Excel
+
+  // Handle calculation
+  const handleCalculate = () => {
+    const calculatedResults = calculateScaling();
+    setResults(calculatedResults);
+    localStorage.setItem("roScalingResults", JSON.stringify(calculatedResults));
+    localStorage.setItem("waterAnalysis", JSON.stringify(waterAnalysis));
+    localStorage.setItem("systemParams", JSON.stringify(systemParams));
+  };
+
+  // Export results to Excel
   const exportToExcel = () => {
-    if (logs.length === 0) {
-      alert("No data to export");
+    if (!results) {
+      alert("Please calculate results first");
       return;
     }
-    
+
     const wb = XLSX.utils.book_new();
-    
-    const exportData = logs.map(log => ({
-      "Date": log.date,
-      "Feed Flow (m³/h)": log.feedFlow,
-      "Feed Pressure (bar)": log.feedPressure,
-      "Permeate Pressure (bar)": log.permeatePressure,
-      "Concentrate Pressure (bar)": log.concentratePressure,
-      "Permeate Flow (m³/h)": log.permeateFlow,
-      "Feed Temp (°C)": log.feedTemp,
-      "Feed Conductivity (µS/cm)": log.feedConductivity,
-      "Permeate Conductivity (µS/cm)": log.permeateConductivity,
-      "Days": log.days,
-      "Differential Pressure (bar)": log.dP,
-      "Recovery (%)": log.R,
-      "Feed TDS (mg/L)": log.feedTDS,
-      "Permeate TDS (mg/L)": log.permeateTDS,
-      "Average Concentration (mg/L)": log.avgConcentration,
-      "Feed Osmotic Pressure (bar)": log.feedOsmoticPressure,
-      "Permeate Osmotic Pressure (bar)": log.permeateOsmoticPressure,
-      "Net Driving Pressure (bar)": log.netDrivingPressure,
-      "Temperature Correction Factor": log.tempCorrectionFactor,
-      "Normalized Permeate Flow (m³/h)": log.NQp,
-      "Normalized Salt Passage": log.normalizedSaltPassage,
-      "Normalized Salt Rejection (%)": log.NSR * 100,
-      "Normalized Differential Pressure (bar)": log.NdP
-    }));
-    
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    XLSX.utils.book_append_sheet(wb, ws, "RO Operating Data");
-    
+
+    // System Information
+    const systemInfo = [
+      ["System Information", "", ""],
+      ["Feed Water Type", "Sea Water", ""],
+      ["Feed Water Flow", systemParams.feedFlow, "m³/hr"],
+      ["Permeate Flow", systemParams.permeateFlow, "m³/hr"],
+      ["System Recovery", systemParams.recovery, "%"],
+      ["Feed Temperature", waterAnalysis.temperature, "°C"],
+      ["Membrane Rejection", systemParams.membraneRejection, "%"],
+      ["", "", ""],
+      ["Antiscalant Dose Rate", systemParams.antiscalantDose, "mg/L Feed"],
+      ["", "", ""],
+    ];
+
+    // Water Analysis
+    const waterAnalysisData = [
+      ["Water Analysis", "Feed", "Permeate", "Concentrate"],
+      ["Ions (mg/L)", "", "", ""],
+      ["Ca", results.feedComposition.ca, results.permeateComposition.ca.toFixed(2), results.concentrateComposition.ca.toFixed(0)],
+      ["Mg", results.feedComposition.mg, results.permeateComposition.mg.toFixed(2), results.concentrateComposition.mg.toFixed(0)],
+      ["Na", results.feedComposition.na, results.permeateComposition.na.toFixed(2), results.concentrateComposition.na.toFixed(0)],
+      ["K", results.feedComposition.k, results.permeateComposition.k.toFixed(2), results.concentrateComposition.k.toFixed(0)],
+      ["HCO3", results.feedComposition.hco3, results.permeateComposition.hco3.toFixed(2), results.concentrateComposition.hco3.toFixed(0)],
+      ["Cl", results.feedComposition.cl, results.permeateComposition.cl.toFixed(2), results.concentrateComposition.cl.toFixed(0)],
+      ["SO4", results.feedComposition.so4, results.permeateComposition.so4.toFixed(2), results.concentrateComposition.so4.toFixed(0)],
+      ["F", results.feedComposition.f, results.permeateComposition.f.toFixed(2), results.concentrateComposition.f.toFixed(2)],
+      ["SiO2", results.feedComposition.sio2, results.permeateComposition.sio2.toFixed(2), results.concentrateComposition.sio2.toFixed(2)],
+      ["TDS", results.feedComposition.tds, results.permeateComposition.tds.toFixed(0), results.concentrateComposition.tds.toFixed(0)],
+      ["pH", results.feedComposition.ph, results.permeateComposition.ph.toFixed(2), results.concentrateComposition.ph.toFixed(2)],
+    ];
+
+    // Scaling Results
+    const scalingData = [
+      ["Scaling Analysis", "No Chem (%)", "With Treatment (%)"],
+      ["CaCO3", results.scalingSaturation.caco3.noChem.toFixed(1), results.scalingSaturation.caco3.withTreatment.toFixed(1)],
+      ["CaSO4", results.scalingSaturation.caso4.noChem.toFixed(1), results.scalingSaturation.caso4.withTreatment.toFixed(1)],
+      ["SiO2", results.scalingSaturation.sio2.noChem.toFixed(1), results.scalingSaturation.sio2.withTreatment.toFixed(1)],
+      ["CaF2", results.scalingSaturation.caf2.noChem.toFixed(1), results.scalingSaturation.caf2.withTreatment.toFixed(1)],
+      ["", "", ""],
+      ["Concentration Factor", results.concentrationFactor.toFixed(2), ""],
+      ["Antiscalant Efficiency", results.antiscalantEfficiency.toFixed(1) + "%", ""],
+    ];
+
+    const systemWs = XLSX.utils.aoa_to_sheet(systemInfo);
+    const waterWs = XLSX.utils.aoa_to_sheet(waterAnalysisData);
+    const scalingWs = XLSX.utils.aoa_to_sheet(scalingData);
+
+    XLSX.utils.book_append_sheet(wb, systemWs, "System Info");
+    XLSX.utils.book_append_sheet(wb, waterWs, "Water Analysis");
+    XLSX.utils.book_append_sheet(wb, scalingWs, "Scaling Results");
+
     const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    
+
     const url = URL.createObjectURL(data);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'RO_Operating_Data.xlsx';
+    link.download = 'RO_Scaling_Assessment.xlsx';
     link.click();
     URL.revokeObjectURL(url);
   };
 
-  const [logs, setLogs] = useState<Array<LogEntry & CalculatedResults>>([]);
-
-  const [referenceConditions, setReferenceConditions] = useState<ReferenceConditions>({
-    feedFlow: 100,
-    feedPressure: 800,
-    permeatePressure: 0,
-    concentratePressure: 780,
-    permeateFlow: 45,
-    feedTemp: 25,
-    feedConductivity: 53000,
-    permeateConductivity: 300,
-  });
-
-  const [useReferenceForNormalization, setUseReferenceForNormalization] = useState<boolean>(false);
-
-  const [tankSizing, setTankSizing] = useState<TankSizing>({
-    vesselCount: 10,
-    elementsPerVessel: 6,
-    vesselDiameter: 8,
-    vesselLength: 20,
-    pipeLength: 50,
-    pipeDiameter: 4,
-  });
-
-  const [cleaningVolumes, setCleaningVolumes] = useState({
-    vesselVolume: 0,
-    pipeVolume: 0,
-    totalVolume: 0,
-  });
-
-  const [selectedGraphParameters, setSelectedGraphParameters] = useState<string[]>([
-    "NQp", "netDrivingPressure", "NSR"
-  ]);
-
-  const graphParameterOptions = {
-    "NQp": { label: "Normalized Permeate Flow (m³/h)", color: "rgb(75, 192, 192)" },
-    "netDrivingPressure": { label: "Net Driving Pressure (bar)", color: "rgb(255, 99, 132)" },
-    "NSR": { label: "Normalized Salt Rejection (%)", color: "rgb(153, 102, 255)" },
-    "feedTDS": { label: "Feed TDS (mg/L)", color: "rgb(255, 159, 64)" },
-    "permeateTDS": { label: "Permeate TDS (mg/L)", color: "rgb(255, 206, 86)" },
-    "tempCorrectionFactor": { label: "Temperature Correction Factor", color: "rgb(54, 162, 235)" },
-    "feedOsmoticPressure": { label: "Feed Osmotic Pressure (bar)", color: "rgb(153, 102, 255)" },
-    "recovery": { label: "Recovery (%)", color: "rgb(255, 99, 132)" },
-    "dP": { label: "Differential Pressure (bar)", color: "rgb(75, 192, 192)" }
-  };
-
-  const handleGraphParameterChange = (parameter: string) => {
-    setSelectedGraphParameters(prev => 
-      prev.includes(parameter) 
-        ? prev.filter(p => p !== parameter)
-        : [...prev, parameter]
-    );
-  };
-
-  const calculateResults = (entry: LogEntry, firstEntry?: LogEntry): CalculatedResults => {
-    // Determine reference values
-    const referenceEntry = useReferenceForNormalization ? referenceConditions : firstEntry || entry;
-
-    // Step 1: Convert Conductivity to TDS
-    const feedTDS = conductivityToTDS(entry.feedConductivity);
-    const permeateTDS = conductivityToTDS(entry.permeateConductivity);
-    const referenceFeedTDS = conductivityToTDS(referenceEntry.feedConductivity);
-    const referencePermeateTDS = conductivityToTDS(referenceEntry.permeateConductivity);
-
-    // Step 2: Basic Calculations
-    const startDate = firstEntry ? new Date(firstEntry.date) : new Date(entry.date);
-    const currentDate = new Date(entry.date);
-    const days = (currentDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
-
-    const dP = entry.feedPressure - entry.concentratePressure;
-    const F = entry.permeateFlow / entry.feedFlow; // Recovery as decimal
-    const R = (1 - entry.permeateConductivity / entry.feedConductivity) * 100; // Salt rejection %
-
-    const referenceRecovery = referenceEntry.permeateFlow / referenceEntry.feedFlow;
-
-    // Step 3: Temperature Correction Factor
-    const tempCorrectionFactor = calculateTempCorrectionFactor(entry.feedTemp);
-    const referenceTempCorrectionFactor = calculateTempCorrectionFactor(referenceEntry.feedTemp);
-
-    // Step 4: Average Concentration Calculation
-    const avgConcentration = calculateAverageConcentration(feedTDS, F);
-    const referenceAvgConcentration = calculateAverageConcentration(referenceFeedTDS, referenceRecovery);
-
-    // Step 5: Osmotic Pressure Calculations
-    const feedOsmoticPressure = calculateOsmoticPressure(avgConcentration, entry.feedTemp);
-    const permeateOsmoticPressure = calculateOsmoticPressure(permeateTDS, entry.feedTemp);
-    const referenceFeedOsmoticPressure = calculateOsmoticPressure(referenceAvgConcentration, referenceEntry.feedTemp);
-    const referencePermeateOsmoticPressure = calculateOsmoticPressure(referencePermeateTDS, referenceEntry.feedTemp);
-
-    // Step 6: Net Driving Pressure
-    const netDrivingPressure = calculateNetDrivingPressure(
-      entry.feedPressure, 
-      dP, 
-      feedOsmoticPressure, 
-      entry.permeatePressure, 
-      permeateOsmoticPressure
-    );
-
-    const referenceNetDrivingPressure = calculateNetDrivingPressure(
-      referenceEntry.feedPressure,
-      referenceEntry.feedPressure - referenceEntry.concentratePressure,
-      referenceFeedOsmoticPressure,
-      referenceEntry.permeatePressure,
-      referencePermeateOsmoticPressure
-    );
-
-    // Step 7: Normalization Calculations
-    
-    // Normalized Permeate Flow
-    let NQp = 0;
-    if (netDrivingPressure > 0 && referenceNetDrivingPressure > 0) {
-      NQp = entry.permeateFlow * 
-            (referenceNetDrivingPressure * referenceTempCorrectionFactor) / 
-            (netDrivingPressure * tempCorrectionFactor);
-    }
-
-    // Normalized Salt Passage
-    const currentSaltPassage = permeateTDS / feedTDS;
-    const referenceSaltPassage = referencePermeateTDS / referenceFeedTDS;
-    
-    const normalizedSaltPassage = currentSaltPassage * 
-      (entry.permeateFlow * referenceTempCorrectionFactor * referenceAvgConcentration * referenceEntry.feedConductivity) /
-      (referenceEntry.permeateFlow * tempCorrectionFactor * avgConcentration * entry.feedConductivity);
-
-    // Normalized Salt Rejection
-    const NSR = 1 - normalizedSaltPassage;
-
-    // Normalized System Pressure (simplified - using temperature correction)
-    const NSP = entry.feedPressure / tempCorrectionFactor;
-
-    // Normalized Differential Pressure (flow-corrected)
-    const concentrateFlow = entry.feedFlow - entry.permeateFlow;
-    const referenceConcentrateFlow = referenceEntry.feedFlow - referenceEntry.permeateFlow;
-    const NdP = Math.pow((entry.permeateFlow + 2 * concentrateFlow) / 
-                        (referenceEntry.permeateFlow + 2 * referenceConcentrateFlow), 2) * dP;
-
-    return { 
-      days, 
-      dP, 
-      F, 
-      R, 
-      NQp, 
-      NSP, 
-      NSR, 
-      NdP,
-      feedTDS,
-      permeateTDS,
-      avgConcentration,
-      feedOsmoticPressure,
-      permeateOsmoticPressure,
-      netDrivingPressure,
-      tempCorrectionFactor,
-      normalizedSaltPassage
-    };
-  };
-
-  const handleInputChange = (field: keyof LogEntry, value: string) => {
-    setCurrentEntry((prev) => ({
-      ...prev,
-      [field]: field === "date" ? value : Number(value),
-    }));
-  };
-
-  const handleAddEntry = () => {
-    const firstEntry = logs[0];
-    const results = calculateResults(currentEntry, firstEntry);
-    const newLogs = [...logs, { ...currentEntry, ...results }];
-    setLogs(newLogs);
-
-    localStorage.setItem("operatingData", JSON.stringify(newLogs));
-    localStorage.setItem(
-      "referenceConditions",
-      JSON.stringify({
-        values: referenceConditions,
-        useForNormalization: useReferenceForNormalization,
-      }),
-    );
-
-    setCurrentEntry({
-      ...currentEntry,
-      date: new Date().toISOString().split("T")[0],
-    });
-  };
-
+  // Load saved data on component mount
   useEffect(() => {
-    const savedLogs = localStorage.getItem("operatingData");
-    const savedReferenceConditions = localStorage.getItem("referenceConditions");
+    const savedWaterAnalysis = localStorage.getItem("waterAnalysis");
+    const savedSystemParams = localStorage.getItem("systemParams");
+    const savedResults = localStorage.getItem("roScalingResults");
 
-    if (savedLogs) {
-      setLogs(JSON.parse(savedLogs));
+    if (savedWaterAnalysis) {
+      setWaterAnalysis(JSON.parse(savedWaterAnalysis));
     }
-
-    if (savedReferenceConditions) {
-      const parsed = JSON.parse(savedReferenceConditions);
-      setReferenceConditions(parsed.values);
-      setUseReferenceForNormalization(parsed.useForNormalization);
+    if (savedSystemParams) {
+      setSystemParams(JSON.parse(savedSystemParams));
+    }
+    if (savedResults) {
+      setResults(JSON.parse(savedResults));
     }
   }, []);
 
-  const calculateCleaningVolumes = () => {
-    const CONVERSION_FACTOR = 1 / (144 * 7.48);
-    const vesselRadius = tankSizing.vesselDiameter / 2;
-    const vesselLengthInches = tankSizing.vesselLength * 12;
-    const pipeLengthInches = tankSizing.pipeLength * 12;
-    const pipeRadius = tankSizing.pipeDiameter / 2;
-
-    const vesselVolume = Math.PI * Math.pow(vesselRadius, 2) * vesselLengthInches * tankSizing.vesselCount * CONVERSION_FACTOR;
-    const pipeVolume = Math.PI * Math.pow(pipeRadius, 2) * pipeLengthInches * CONVERSION_FACTOR;
-    const totalVolume = vesselVolume + pipeVolume;
-
-    setCleaningVolumes({
-      vesselVolume: Math.round(vesselVolume),
-      pipeVolume: Math.round(pipeVolume),
-      totalVolume: Math.round(totalVolume),
-    });
-  };
-
-  const getRecommendedFlowRate = (diameter: number) => {
-    const flowRates = {
-      2.5: "3-5 gpm (0.7-1.2 m³/h)",
-      4: "8-10 gpm (1.8-2.3 m³/h)",
-      6: "16-20 gpm (3.6-4.5 m³/h)",
-      8: "30-45 gpm (6.0-10.2 m³/h)",
-    };
-    return flowRates[diameter as keyof typeof flowRates] || "N/A";
-  };
-
-  const handleTankSizingChange = (field: keyof TankSizing, value: string) => {
-    setTankSizing((prev) => ({
-      ...prev,
-      [field]: Number(value),
-    }));
-  };
-
   return (
-    <div className="bg-white p-6 rounded-lg shadow-lg">
+    <div className="bg-white p-6 rounded-lg shadow-lg max-w-7xl mx-auto">
       <h2 className="text-2xl font-bold text-blue-800 mb-6">
-        RO Membrane Evaluation
+        RO Membrane Scaling Potential Assessment
       </h2>
 
-      {/* Reference Conditions */}
-      <div className="mb-6 bg-gray-50 p-4 rounded-lg">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold text-blue-700">
-            Reference Conditions
-          </h3>
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="useReference"
-              checked={useReferenceForNormalization}
-              onChange={() => setUseReferenceForNormalization(!useReferenceForNormalization)}
-              className="mr-2"
-            />
-            <label htmlFor="useReference" className="text-sm text-gray-700">
-              Use for normalization
-            </label>
-          </div>
-        </div>
-        <p className="text-sm text-gray-600 mb-4">
-          These reference values will be used as the baseline for normalization calculations when enabled. 
-          Otherwise, the first log entry will be used as the baseline. Enter the value based on your 
-          operating data at start up or based on the operating design of your RO membrane.
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {Object.keys(referenceConditions).map((key) => (
-            <div key={key} className="mb-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {key === "feedFlow" ? "Feed Flow (m³/h)" :
-                 key === "feedPressure" ? "Feed Press. (bar)" :
-                 key === "permeatePressure" ? "Perm. Press. (bar)" :
-                 key === "concentratePressure" ? "Conc. Press. (bar)" :
-                 key === "permeateFlow" ? "Perm. Flow (m³/h)" :
-                 key === "feedTemp" ? "Feed Temp. (°C)" :
-                 key === "feedConductivity" ? "Feed Cond. (µS/cm)" :
-                 "Perm. Cond. (µS/cm)"}
-              </label>
-              <input
-                type="number"
-                value={referenceConditions[key as keyof ReferenceConditions]}
-                onChange={(e) =>
-                  setReferenceConditions((prev) => ({
-                    ...prev,
-                    [key]: Number(e.target.value),
-                  }))
-                }
-                className="w-full p-2 border rounded"
-              />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Input Section */}
+        <div className="space-y-6">
+          {/* System Parameters */}
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <h3 className="text-lg font-semibold text-blue-700 mb-4">System Information</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Feed Flow (m³/hr)</label>
+                <input
+                  type="number"
+                  value={systemParams.feedFlow}
+                  onChange={(e) => setSystemParams(prev => ({ ...prev, feedFlow: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Permeate Flow (m³/hr)</label>
+                <input
+                  type="number"
+                  value={systemParams.permeateFlow}
+                  onChange={(e) => {
+                    const permeateFlow = Number(e.target.value);
+                    const recovery = (permeateFlow / systemParams.feedFlow) * 100;
+                    setSystemParams(prev => ({ 
+                      ...prev, 
+                      permeateFlow,
+                      recovery: Number(recovery.toFixed(1))
+                    }));
+                  }}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">System Recovery (%)</label>
+                <input
+                  type="number"
+                  value={systemParams.recovery}
+                  onChange={(e) => {
+                    const recovery = Number(e.target.value);
+                    const permeateFlow = (recovery / 100) * systemParams.feedFlow;
+                    setSystemParams(prev => ({ 
+                      ...prev, 
+                      recovery,
+                      permeateFlow: Number(permeateFlow.toFixed(1))
+                    }));
+                  }}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Feed Temperature (°C)</label>
+                <input
+                  type="number"
+                  value={waterAnalysis.temperature}
+                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, temperature: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Membrane Rejection (%)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={systemParams.membraneRejection}
+                  onChange={(e) => setSystemParams(prev => ({ ...prev, membraneRejection: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Antiscalant Dose (mg/L)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={systemParams.antiscalantDose}
+                  onChange={(e) => setSystemParams(prev => ({ ...prev, antiscalantDose: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
             </div>
-          ))}
-        </div>
-      </div>
+          </div>
 
-      {/* Input Table */}
-      <div className="mb-4">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">Input Parameters</h3>
-          <div className="flex space-x-2">
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileUpload}
-              accept=".xlsx, .xls"
-              className="hidden"
-            />
+          {/* Water Analysis */}
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h3 className="text-lg font-semibold text-blue-700 mb-4">Feed Water Analysis</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Calcium (Ca) mg/L</label>
+                <input
+                  type="number"
+                  value={waterAnalysis.ca}
+                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, ca: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Magnesium (Mg) mg/L</label>
+                <input
+                  type="number"
+                  value={waterAnalysis.mg}
+                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, mg: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Sodium (Na) mg/L</label>
+                <input
+                  type="number"
+                  value={waterAnalysis.na}
+                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, na: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Potassium (K) mg/L</label>
+                <input
+                  type="number"
+                  value={waterAnalysis.k}
+                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, k: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Bicarbonate (HCO3) mg/L</label>
+                <input
+                  type="number"
+                  value={waterAnalysis.hco3}
+                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, hco3: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Chloride (Cl) mg/L</label>
+                <input
+                  type="number"
+                  value={waterAnalysis.cl}
+                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, cl: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Sulfate (SO4) mg/L</label>
+                <input
+                  type="number"
+                  value={waterAnalysis.so4}
+                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, so4: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Fluoride (F) mg/L</label>
+                <input
+                  type="number"
+                  value={waterAnalysis.f}
+                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, f: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Silica (SiO2) mg/L</label>
+                <input
+                  type="number"
+                  value={waterAnalysis.sio2}
+                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, sio2: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">TDS mg/L</label>
+                <input
+                  type="number"
+                  value={waterAnalysis.tds}
+                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, tds: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">pH</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={waterAnalysis.ph}
+                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, ph: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex space-x-4">
             <button
-              onClick={() => fileInputRef.current?.click()}
-              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center"
+              onClick={handleCalculate}
+              className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 font-semibold"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-              </svg>
-              Import Excel
+              Calculate Scaling Potential
             </button>
             <button
               onClick={exportToExcel}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center"
-              disabled={logs.length === 0}
+              disabled={!results}
+              className="bg-green-600 text-white py-3 px-6 rounded-lg hover:bg-green-700 disabled:bg-gray-400 font-semibold"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 9.293a1 1 0 010 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414L2 10.586V4a1 1 0 012 0v6.586l1.293-1.293a1 1 0 011.414 0z" clipRule="evenodd" />
-              </svg>
-              Export Data
-            </button>
-            <button
-              onClick={createExcelTemplate}
-              className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 flex items-center"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V7.414A2 2 0 0015.414 6L12 2.586A2 2 0 0010.586 2H6zm5 6a1 1 0 10-2 0v3.586l-1.293-1.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V8z" clipRule="evenodd" />
-              </svg>
-              Download Template
+              Export Results
             </button>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full border border-gray-200">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="px-4 py-2 border">Date</th>
-                <th className="px-4 py-2 border">Feed Flow (m³/h)</th>
-                <th className="px-4 py-2 border">Feed Press. (bar)</th>
-                <th className="px-4 py-2 border">Perm. Press. (bar)</th>
-                <th className="px-4 py-2 border">Conc. Press. (bar)</th>
-                <th className="px-4 py-2 border">Perm. Flow (m³/h)</th>
-                <th className="px-4 py-2 border">Feed Temp. (°C)</th>
-                <th className="px-4 py-2 border">Feed Cond. (µS/cm)</th>
-                <th className="px-4 py-2 border">Perm. Cond. (µS/cm)</th>
-                <th className="px-4 py-2 border">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className="px-2 py-1 border">
-                  <input
-                    type="date"
-                    value={currentEntry.date}
-                    onChange={(e) => handleInputChange("date", e.target.value)}
-                    className="w-full"
-                  />
-                </td>
-                {Object.keys(currentEntry).map((key) => {
-                  if (key === "date") return null;
-                  return (
-                    <td key={key} className="px-2 py-1 border">
-                      <input
-                        type="number"
-                        value={currentEntry[key as keyof LogEntry]}
-                        onChange={(e) => handleInputChange(key as keyof LogEntry, e.target.value)}
-                        className="w-full"
-                      />
-                    </td>
-                  );
-                })}
-                <td className="px-2 py-1 border">
-                  <button
-                    onClick={handleAddEntry}
-                    className="bg-blue-600 text-white px-4 py-1 rounded hover:bg-blue-700"
-                  >
-                    Add
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
 
-      {/* Import/Export Help */}
-      <div className="mb-4 bg-blue-50 p-4 rounded-lg text-sm text-blue-800">
-        <h4 className="font-semibold mb-1">Import/Export Instructions:</h4>
-        <ul className="list-disc pl-5 space-y-1">
-          <li><strong>Import Excel:</strong> Upload data from an Excel file. The file should match the template format.</li>
-          <li><strong>Export Data:</strong> Download current data as an Excel file including all calculated results.</li>
-          <li><strong>Download Template:</strong> Get a blank Excel template with the correct format for data import.</li>
-        </ul>
-      </div>
-      
-      {/* Results Table */}
-      <div className="mb-8">
-        <h3 className="text-lg font-semibold mb-4">Results</h3>
-        <div className="overflow-x-auto">
-          <table className="min-w-full border border-gray-200">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="px-4 py-2 border">Date</th>
-                <th className="px-4 py-2 border">Days</th>
-                <th className="px-4 py-2 border">Differential Pressure (bar)</th>
-                <th className="px-4 py-2 border">Recovery (%)</th>
-                <th className="px-4 py-2 border">Feed TDS (mg/L)</th>
-                <th className="px-4 py-2 border">Permeate TDS (mg/L)</th>
-                <th className="px-4 py-2 border">Net Driving Pressure (bar)</th>
-                <th className="px-4 py-2 border">Normalized Permeate Flow (m³/h)</th>
-                <th className="px-4 py-2 border">Normalized Salt Passage (%)</th>
-                <th className="px-4 py-2 border">Normalized Salt Rejection (%)</th>
-                <th className="px-4 py-2 border">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((log, index) => (
-                <tr key={index}>
-                  <td className="px-4 py-2 border">{log.date}</td>
-                  <td className="px-4 py-2 border">{log.days.toFixed(1)}</td>
-                  <td className="px-4 py-2 border">{log.dP.toFixed(2)}</td>
-                  <td className="px-4 py-2 border">{(log.F * 100).toFixed(2)}</td>
-                  <td className="px-4 py-2 border">{log.feedTDS.toFixed(0)}</td>
-                  <td className="px-4 py-2 border">{log.permeateTDS.toFixed(0)}</td>
-                  <td className="px-4 py-2 border">{log.netDrivingPressure.toFixed(2)}</td>
-                  <td className="px-4 py-2 border">{log.NQp.toFixed(2)}</td>
-                  <td className="px-4 py-2 border">{(log.normalizedSaltPassage * 100).toFixed(2)}</td>
-                  <td className="px-4 py-2 border">{(log.NSR * 100).toFixed(2)}</td>
-                  <td className="px-4 py-2 border">
-                    <button
-                      onClick={() => setLogs(logs.filter((_, i) => i !== index))}
-                      className="bg-red-600 text-white px-4 py-1 rounded hover:bg-red-700"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        {/* Results Section */}
+        <div className="space-y-6">
+          {results && (
+            <>
+              {/* Key Metrics */}
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h3 className="text-lg font-semibold text-blue-700 mb-4">System Performance</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-white p-3 rounded">
+                    <div className="text-sm text-gray-600">Concentration Factor</div>
+                    <div className="text-2xl font-bold text-blue-800">{results.concentrationFactor.toFixed(2)}x</div>
+                  </div>
+                  <div className="bg-white p-3 rounded">
+                    <div className="text-sm text-gray-600">Recovery Rate</div>
+                    <div className="text-2xl font-bold text-blue-800">{systemParams.recovery}%</div>
+                  </div>
+                  <div className="bg-white p-3 rounded">
+                    <div className="text-sm text-gray-600">Membrane Rejection</div>
+                    <div className="text-2xl font-bold text-blue-800">{systemParams.membraneRejection}%</div>
+                  </div>
+                  <div className="bg-white p-3 rounded">
+                    <div className="text-sm text-gray-600">Antiscalant Efficiency</div>
+                    <div className="text-2xl font-bold text-green-600">{results.antiscalantEfficiency.toFixed(1)}%</div>
+                  </div>
+                </div>
+              </div>
 
-      {/* Performance Graphs */}
-      <div className="mt-8 mb-8">
-        <h3 className="text-lg font-semibold mb-4">Performance Trends</h3>
-        
-        {/* Parameter Selection */}
-        <div className="mb-4 bg-gray-50 p-4 rounded-lg">
-          <h4 className="font-semibold mb-2">Select Parameters to Plot:</h4>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-            {Object.entries(graphParameterOptions).map(([key, option]) => (
-              <label key={key} className="flex items-center space-x-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={selectedGraphParameters.includes(key)}
-                  onChange={() => handleGraphParameterChange(key)}
-                  className="rounded"
-                />
-                <span>{option.label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {/* Graph */}
-        {selectedGraphParameters.length > 0 ? (
-          <Line
-            data={{
-              labels: logs.map((log) => log.date),
-              datasets: selectedGraphParameters.map((param, index) => {
-                const option = graphParameterOptions[param];
-                const colors = [
-                  "rgb(75, 192, 192)", "rgb(255, 99, 132)", "rgb(153, 102, 255)",
-                  "rgb(255, 159, 64)", "rgb(255, 206, 86)", "rgb(54, 162, 235)",
-                  "rgb(231, 233, 237)", "rgb(255, 99, 255)", "rgb(99, 255, 132)"
-                ];
-                
-                let data;
-                switch (param) {
-                  case "NQp":
-                    data = logs.map((log) => log.NQp);
-                    break;
-                  case "netDrivingPressure":
-                    data = logs.map((log) => log.netDrivingPressure);
-                    break;
-                  case "NSR":
-                    data = logs.map((log) => log.NSR * 100);
-                    break;
-                  case "feedTDS":
-                    data = logs.map((log) => log.feedTDS);
-                    break;
-                  case "permeateTDS":
-                    data = logs.map((log) => log.permeateTDS);
-                    break;
-                  case "tempCorrectionFactor":
-                    data = logs.map((log) => log.tempCorrectionFactor);
-                    break;
-                  case "feedOsmoticPressure":
-                    data = logs.map((log) => log.feedOsmoticPressure);
-                    break;
-                  case "recovery":
-                    data = logs.map((log) => log.F * 100);
-                    break;
-                  case "dP":
-                    data = logs.map((log) => log.dP);
-                    break;
-                  default:
-                    data = [];
-                }
-
-                return {
-                  label: option.label,
-                  data: data,
-                  borderColor: colors[index % colors.length],
-                  backgroundColor: colors[index % colors.length].replace('rgb', 'rgba').replace(')', ', 0.2)'),
-                  tension: 0.1,
-                };
-              }),
-            }}
-            options={{
-              responsive: true,
-              interaction: {
-                mode: 'index' as const,
-                intersect: false,
-              },
-              scales: {
-                x: {
-                  display: true,
-                  title: {
-                    display: true,
-                    text: "Date",
-                  },
-                },
-                y: {
-                  display: true,
-                  title: {
-                    display: true,
-                    text: "Value (Various Units)",
-                  },
-                },
-              },
-              plugins: {
-                legend: {
-                  position: 'top' as const,
-                },
-                tooltip: {
-                  callbacks: {
-                    label: function(context) {
-                      const datasetLabel = context.dataset.label || '';
-                      const value = context.parsed.y;
-                      
-                      // Add appropriate units based on parameter
-                      let unit = '';
-                      if (datasetLabel.includes('Flow')) unit = ' m³/h';
-                      else if (datasetLabel.includes('Pressure')) unit = ' bar';
-                      else if (datasetLabel.includes('TDS')) unit = ' mg/L';
-                      else if (datasetLabel.includes('%') || datasetLabel.includes('Recovery') || datasetLabel.includes('Rejection')) unit = '%';
-                      
-                      return `${datasetLabel}: ${value.toFixed(2)}${unit}`;
+              {/* Scaling Potential Chart */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="text-lg font-semibold text-blue-700 mb-4">Concentrate Solubilities</h3>
+                <Bar
+                  data={{
+                    labels: ['CaCO₃', 'CaSO₄', 'SiO₂', 'CaF₂'],
+                    datasets: [
+                      {
+                        label: 'NO CHEM',
+                        data: [
+                          results.scalingSaturation.caco3.noChem,
+                          results.scalingSaturation.caso4.noChem,
+                          results.scalingSaturation.sio2.noChem,
+                          results.scalingSaturation.caf2.noChem
+                        ],
+                        backgroundColor: 'rgba(54, 162, 235, 0.8)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1,
+                      },
+                      {
+                        label: 'WITH TREATMENT',
+                        data: [
+                          results.scalingSaturation.caco3.withTreatment,
+                          results.scalingSaturation.caso4.withTreatment,
+                          results.scalingSaturation.sio2.withTreatment,
+                          results.scalingSaturation.caf2.withTreatment
+                        ],
+                        backgroundColor: 'rgba(75, 192, 192, 0.8)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1,
+                      }
+                    ]
+                  }}
+                  options={{
+                    responsive: true,
+                    plugins: {
+                      legend: {
+                        position: 'top' as const,
+                      },
+                      tooltip: {
+                        callbacks: {
+                          label: function(context) {
+                            return `${context.dataset.label}: ${context.parsed.y.toFixed(1)}%`;
+                          }
+                        }
+                      }
+                    },
+                    scales: {
+                      y: {
+                        beginAtZero: true,
+                        title: {
+                          display: true,
+                          text: 'Percent of Saturation'
+                        },
+                        ticks: {
+                          callback: function(value) {
+                            return value + '%';
+                          }
+                        }
+                      },
+                      x: {
+                        title: {
+                          display: true,
+                          text: 'Scale Forming Compound'
+                        }
+                      }
                     }
-                  }
-                }
-              },
-            }}
-          />
-        ) : (
-          <div className="text-center text-gray-500 py-8">
-            Please select at least one parameter to display the graph.
-          </div>
-        )}
+                  }}
+                />
+                
+                {/* Add red line at 100% like in the original report */}
+                <div className="mt-2 text-xs text-gray-600 text-center">
+                  <span className="inline-block w-8 h-0.5 bg-red-500 mr-2"></span>
+                  100% Saturation Limit
+                </div>
+              </div>
+
+              {/* Saturation Table */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="text-lg font-semibold text-blue-700 mb-4">Saturation Analysis</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full bg-white rounded border text-sm">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="px-3 py-2 text-left">Compound</th>
+                        <th className="px-3 py-2 text-center">Feed</th>
+                        <th className="px-3 py-2 text-center">Concentrate</th>
+                        <th className="px-3 py-2 text-center">With Treatment</th>
+                        <th className="px-3 py-2 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">CaCO₃</td>
+                        <td className="px-3 py-2 text-center">{(results.scalingSaturation.caco3.noChem / results.concentrationFactor).toFixed(1)}%</td>
+                        <td className="px-3 py-2 text-center">{results.scalingSaturation.caco3.noChem.toFixed(1)}%</td>
+                        <td className="px-3 py-2 text-center">{results.scalingSaturation.caco3.withTreatment.toFixed(1)}%</td>
+                        <td className="px-3 py-2 text-center">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            results.scalingSaturation.caco3.withTreatment > 100 ? 'bg-red-100 text-red-800' :
+                            results.scalingSaturation.caco3.withTreatment > 80 ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-green-100 text-green-800'
+                          }`}>
+                            {results.scalingSaturation.caco3.withTreatment > 100 ? 'HIGH RISK' :
+                             results.scalingSaturation.caco3.withTreatment > 80 ? 'MODERATE' : 'LOW RISK'}
+                          </span>
+                        </td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">CaSO₄</td>
+                        <td className="px-3 py-2 text-center">{(results.scalingSaturation.caso4.noChem / results.concentrationFactor).toFixed(1)}%</td>
+                        <td className="px-3 py-2 text-center">{results.scalingSaturation.caso4.noChem.toFixed(1)}%</td>
+                        <td className="px-3 py-2 text-center">{results.scalingSaturation.caso4.withTreatment.toFixed(1)}%</td>
+                        <td className="px-3 py-2 text-center">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            results.scalingSaturation.caso4.withTreatment > 100 ? 'bg-red-100 text-red-800' :
+                            results.scalingSaturation.caso4.withTreatment > 80 ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-green-100 text-green-800'
+                          }`}>
+                            {results.scalingSaturation.caso4.withTreatment > 100 ? 'HIGH RISK' :
+                             results.scalingSaturation.caso4.withTreatment > 80 ? 'MODERATE' : 'LOW RISK'}
+                          </span>
+                        </td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">SiO₂</td>
+                        <td className="px-3 py-2 text-center">{(results.scalingSaturation.sio2.noChem / results.concentrationFactor).toFixed(1)}%</td>
+                        <td className="px-3 py-2 text-center">{results.scalingSaturation.sio2.noChem.toFixed(1)}%</td>
+                        <td className="px-3 py-2 text-center">{results.scalingSaturation.sio2.withTreatment.toFixed(1)}%</td>
+                        <td className="px-3 py-2 text-center">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            results.scalingSaturation.sio2.withTreatment > 100 ? 'bg-red-100 text-red-800' :
+                            results.scalingSaturation.sio2.withTreatment > 80 ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-green-100 text-green-800'
+                          }`}>
+                            {results.scalingSaturation.sio2.withTreatment > 100 ? 'HIGH RISK' :
+                             results.scalingSaturation.sio2.withTreatment > 80 ? 'MODERATE' : 'LOW RISK'}
+                          </span>
+                        </td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">CaF₂</td>
+                        <td className="px-3 py-2 text-center">{(results.scalingSaturation.caf2.noChem / results.concentrationFactor).toFixed(1)}%</td>
+                        <td className="px-3 py-2 text-center">{results.scalingSaturation.caf2.noChem.toFixed(1)}%</td>
+                        <td className="px-3 py-2 text-center">{results.scalingSaturation.caf2.withTreatment.toFixed(1)}%</td>
+                        <td className="px-3 py-2 text-center">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            results.scalingSaturation.caf2.withTreatment > 100 ? 'bg-red-100 text-red-800' :
+                            results.scalingSaturation.caf2.withTreatment > 80 ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-green-100 text-green-800'
+                          }`}>
+                            {results.scalingSaturation.caf2.withTreatment > 100 ? 'HIGH RISK' :
+                             results.scalingSaturation.caf2.withTreatment > 80 ? 'MODERATE' : 'LOW RISK'}
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Water Analysis Results */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="text-lg font-semibold text-blue-700 mb-4">Water Analysis Results</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full bg-white rounded border text-sm">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="px-3 py-2 text-left">Ions (mg/L)</th>
+                        <th className="px-3 py-2 text-center">Feed</th>
+                        <th className="px-3 py-2 text-center">Permeate</th>
+                        <th className="px-3 py-2 text-center">Concentrate</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">Ca</td>
+                        <td className="px-3 py-2 text-center">{results.feedComposition.ca.toFixed(0)}</td>
+                        <td className="px-3 py-2 text-center">{results.permeateComposition.ca.toFixed(2)}</td>
+                        <td className="px-3 py-2 text-center">{results.concentrateComposition.ca.toFixed(0)}</td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">Mg</td>
+                        <td className="px-3 py-2 text-center">{results.feedComposition.mg.toFixed(0)}</td>
+                        <td className="px-3 py-2 text-center">{results.permeateComposition.mg.toFixed(2)}</td>
+                        <td className="px-3 py-2 text-center">{results.concentrateComposition.mg.toFixed(0)}</td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">Na</td>
+                        <td className="px-3 py-2 text-center">{results.feedComposition.na.toFixed(0)}</td>
+                        <td className="px-3 py-2 text-center">{results.permeateComposition.na.toFixed(0)}</td>
+                        <td className="px-3 py-2 text-center">{results.concentrateComposition.na.toFixed(0)}</td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">K</td>
+                        <td className="px-3 py-2 text-center">{results.feedComposition.k.toFixed(0)}</td>
+                        <td className="px-3 py-2 text-center">{results.permeateComposition.k.toFixed(2)}</td>
+                        <td className="px-3 py-2 text-center">{results.concentrateComposition.k.toFixed(0)}</td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">HCO₃</td>
+                        <td className="px-3 py-2 text-center">{results.feedComposition.hco3.toFixed(0)}</td>
+                        <td className="px-3 py-2 text-center">{results.permeateComposition.hco3.toFixed(2)}</td>
+                        <td className="px-3 py-2 text-center">{results.concentrateComposition.hco3.toFixed(0)}</td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">Cl</td>
+                        <td className="px-3 py-2 text-center">{results.feedComposition.cl.toFixed(0)}</td>
+                        <td className="px-3 py-2 text-center">{results.permeateComposition.cl.toFixed(0)}</td>
+                        <td className="px-3 py-2 text-center">{results.concentrateComposition.cl.toFixed(0)}</td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">SO₄</td>
+                        <td className="px-3 py-2 text-center">{results.feedComposition.so4.toFixed(0)}</td>
+                        <td className="px-3 py-2 text-center">{results.permeateComposition.so4.toFixed(0)}</td>
+                        <td className="px-3 py-2 text-center">{results.concentrateComposition.so4.toFixed(0)}</td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">F</td>
+                        <td className="px-3 py-2 text-center">{results.feedComposition.f.toFixed(2)}</td>
+                        <td className="px-3 py-2 text-center">{results.permeateComposition.f.toFixed(3)}</td>
+                        <td className="px-3 py-2 text-center">{results.concentrateComposition.f.toFixed(2)}</td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">SiO₂</td>
+                        <td className="px-3 py-2 text-center">{results.feedComposition.sio2.toFixed(2)}</td>
+                        <td className="px-3 py-2 text-center">{results.permeateComposition.sio2.toFixed(3)}</td>
+                        <td className="px-3 py-2 text-center">{results.concentrateComposition.sio2.toFixed(2)}</td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">TDS</td>
+                        <td className="px-3 py-2 text-center">{results.feedComposition.tds.toFixed(0)}</td>
+                        <td className="px-3 py-2 text-center">{results.permeateComposition.tds.toFixed(0)}</td>
+                        <td className="px-3 py-2 text-center">{results.concentrateComposition.tds.toFixed(0)}</td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">pH</td>
+                        <td className="px-3 py-2 text-center">{results.feedComposition.ph.toFixed(2)}</td>
+                        <td className="px-3 py-2 text-center">{results.permeateComposition.ph.toFixed(2)}</td>
+                        <td className="px-3 py-2 text-center">{results.concentrateComposition.ph.toFixed(2)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Recommendations */}
+              <div className="bg-white border-l-4 border-blue-500 p-4 rounded">
+                <h3 className="text-lg font-semibold text-blue-700 mb-3">System Recommendations</h3>
+                <div className="space-y-2 text-sm">
+                  {results.scalingSaturation.caco3.withTreatment > 100 && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded">
+                      <strong className="text-red-800">⚠️ CaCO₃ Scaling Risk:</strong>
+                      <p className="text-red-700">High calcium carbonate scaling potential ({results.scalingSaturation.caco3.withTreatment.toFixed(1)}%). Consider increasing antiscalant dose or reducing recovery rate.</p>
+                    </div>
+                  )}
+                  
+                  {results.scalingSaturation.caso4.withTreatment > 100 && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded">
+                      <strong className="text-red-800">⚠️ CaSO₄ Scaling Risk:</strong>
+                      <p className="text-red-700">High calcium sulfate scaling potential ({results.scalingSaturation.caso4.withTreatment.toFixed(1)}%). Consider reducing recovery or increasing antiscalant dose.</p>
+                    </div>
+                  )}
+
+                  {results.scalingSaturation.sio2.withTreatment > 100 && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded">
+                      <strong className="text-red-800">⚠️ SiO₂ Scaling Risk:</strong>
+                      <p className="text-red-700">High silica scaling potential ({results.scalingSaturation.sio2.withTreatment.toFixed(1)}%). Consider reducing recovery rate or adding dispersant.</p>
+                    </div>
+                  )}
+
+                  {systemParams.recovery > 85 && (
+                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded">
+                      <strong className="text-yellow-800">⚠️ High Recovery Rate:</strong>
+                      <p className="text-yellow-700">Recovery rate of {systemParams.recovery}% is high. Monitor scaling indices closely and consider frequent cleaning cycles.</p>
+                    </div>
+                  )}
+
+                  {systemParams.antiscalantDose < 1.5 && (
+                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded">
+                      <strong className="text-yellow-800">⚠️ Low Antiscalant Dose:</strong>
+                      <p className="text-yellow-700">Antiscalant dose of {systemParams.antiscalantDose} mg/L may be insufficient for high scaling conditions. Consider increasing to 2-3 mg/L.</p>
+                    </div>
+                  )}
+
+                  {/* Positive recommendations */}
+                  {results.scalingSaturation.caco3.withTreatment < 80 && 
+                   results.scalingSaturation.caso4.withTreatment < 80 && 
+                   results.scalingSaturation.sio2.withTreatment < 80 && (
+                    <div className="p-3 bg-green-50 border border-green-200 rounded">
+                      <strong className="text-green-800">✅ Low Scaling Risk:</strong>
+                      <p className="text-green-700">All scaling indices are within acceptable limits. Current operating conditions and antiscalant dose are suitable.</p>
+                    </div>
+                  )}
+
+                  {results.concentrationFactor < 5 && (
+                    <div className="p-3 bg-green-50 border border-green-200 rounded">
+                      <strong className="text-green-800">✅ Conservative Operation:</strong>
+                      <p className="text-green-700">Concentration factor of {results.concentrationFactor.toFixed(2)}x indicates conservative operation with good margin for scaling control.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+          {!results && (
+            <div className="bg-gray-50 p-8 rounded-lg text-center">
+              <div className="text-gray-500 text-lg mb-2">No Results Yet</div>
+              <p className="text-gray-400">Enter your system parameters and water analysis data, then click "Calculate Scaling Potential" to see the assessment results.</p>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Cleaning Requirements Display */}
-      <div className="mb-8">
-        <h3 className="text-lg font-semibold mb-4">Cleaning Requirements Analysis</h3>
-        <div className="mb-2 text-sm text-gray-700">
-          <strong>Baseline source:</strong>{" "}
-          {useReferenceForNormalization ? "Reference Conditions" : "First Log Entry"}
-        </div>
-        {logs.length >= 1 && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {(() => {
-              const latest = logs[logs.length - 1];
-              const baselineValues = useReferenceForNormalization
-                ? calculateResults(referenceConditions as LogEntry)
-                : logs[0];
-
-              const flowDecline = ((latest.NQp - baselineValues.NQp) / baselineValues.NQp) * 100;
-              const saltRejectionChange = ((latest.NSR - baselineValues.NSR) / baselineValues.NSR) * 100;
-              const pressureDropIncrease = ((latest.NdP - baselineValues.NdP) / baselineValues.NdP) * 100;
-
-              return (
-                <>
-                  <div className={`p-4 rounded-lg ${flowDecline <= -10 ? "bg-red-100" : "bg-green-100"}`}>
-                    <h4 className="font-semibold">Normalized Flow Decline</h4>
-                    <p className="text-2xl font-bold">{flowDecline.toFixed(2)}%</p>
-                    <p className="text-sm mt-2">
-                      {flowDecline <= -10 ? "Cleaning Required" : "Within Normal Range"}
-                    </p>
-                  </div>
-
-                  <div className={`p-4 rounded-lg ${saltRejectionChange <= -5 ? "bg-red-100" : "bg-green-100"}`}>
-                    <h4 className="font-semibold">Salt Rejection Change</h4>
-                    <p className="text-2xl font-bold">{saltRejectionChange.toFixed(2)}%</p>
-                    <p className="text-sm mt-2">
-                      {saltRejectionChange <= -5 ? "Cleaning Required" : "Within Normal Range"}
-                    </p>
-                  </div>
-
-                  <div className={`p-4 rounded-lg ${pressureDropIncrease >= 15 ? "bg-red-100" : "bg-green-100"}`}>
-                    <h4 className="font-semibold">Pressure Drop Increase</h4>
-                    <p className="text-2xl font-bold">{pressureDropIncrease.toFixed(2)}%</p>
-                    <p className="text-sm mt-2">
-                      {pressureDropIncrease >= 15 ? "Cleaning Required" : "Within Normal Range"}
-                    </p>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        )}
-        {logs.length < 1 && (
-          <p className="text-gray-600">
-            At least one data point is needed to analyze cleaning requirements.
-          </p>
-        )}
-      </div>
-
-      {/* Cleaning Tank Sizing Calculator */}
-      <div className="bg-gray-50 p-6 rounded-lg mb-8">
-        <h3 className="text-lg font-semibold mb-4">Cleaning Tank Sizing Calculator</h3>
-
-        {/* Vessel Specifications */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      {/* Help Section */}
+      <div className="mt-8 bg-blue-50 p-4 rounded-lg">
+        <h3 className="text-lg font-semibold text-blue-700 mb-3">Understanding the Assessment</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Number of Vessels</label>
-            <input
-              type="number"
-              value={tankSizing.vesselCount}
-              onChange={(e) => handleTankSizingChange("vesselCount", e.target.value)}
-              className="w-full p-2 border rounded"
-            />
+            <h4 className="font-semibold mb-2">Scaling Risk Levels:</h4>
+            <ul className="space-y-1 text-gray-700">
+              <li><span className="text-green-600">• Low Risk (&lt;80%):</span> Safe operation, minimal scaling potential</li>
+              <li><span className="text-yellow-600">• Moderate Risk (80-100%):</span> Monitor closely, prepare for cleaning</li>
+              <li><span className="text-red-600">• High Risk (&gt;100%):</span> Immediate action required</li>
+            </ul>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Elements per Vessel</label>
-            <input
-              type="number"
-              value={tankSizing.elementsPerVessel}
-              onChange={(e) => handleTankSizingChange("elementsPerVessel", e.target.value)}
-              className="w-full p-2 border rounded"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Vessel Diameter (inches)</label>
-            <input
-              type="number"
-              value={tankSizing.vesselDiameter}
-              onChange={(e) => handleTankSizingChange("vesselDiameter", e.target.value)}
-              className="w-full p-2 border rounded"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Vessel Length (feet)</label>
-            <input
-              type="number"
-              value={tankSizing.vesselLength}
-              onChange={(e) => handleTankSizingChange("vesselLength", e.target.value)}
-              className="w-full p-2 border rounded"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Pipe Length (feet)</label>
-            <input
-              type="number"
-              value={tankSizing.pipeLength}
-              onChange={(e) => handleTankSizingChange("pipeLength", e.target.value)}
-              className="w-full p-2 border rounded"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Pipe Diameter (inches)</label>
-            <input
-              type="number"
-              value={tankSizing.pipeDiameter}
-              onChange={(e) => handleTankSizingChange("pipeDiameter", e.target.value)}
-              className="w-full p-2 border rounded"
-            />
+            <h4 className="font-semibold mb-2">Key Factors:</h4>
+            <ul className="space-y-1 text-gray-700">
+              <li><strong>Concentration Factor:</strong> How much salts concentrate in reject (target: &lt;5x)</li>
+              <li><strong>Recovery Rate:</strong> Percentage of feed converted to permeate (typical: 75-85%)</li>
+              <li><strong>Antiscalant Dose:</strong> Chemical dose to prevent scaling (typical: 2-4 mg/L)</li>
+              <li><strong>Membrane Rejection:</strong> Overall salt rejection efficiency (typical: 99%+)</li>
+            </ul>
           </div>
         </div>
-
-        <button
-          onClick={calculateCleaningVolumes}
-          className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 mb-4"
-        >
-          Calculate Cleaning Tank Size
-        </button>
-
-        {cleaningVolumes.totalVolume > 0 && (
-          <div className="bg-white p-4 rounded-lg">
-            <h4 className="font-semibold mb-4">Calculation Results:</h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <p className="text-sm text-gray-600">Vessel Volume:</p>
-                <p className="text-lg font-semibold">{cleaningVolumes.vesselVolume} gallons</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Pipe Volume:</p>
-                <p className="text-lg font-semibold">{cleaningVolumes.pipeVolume} gallons</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Total Volume:</p>
-                <p className="text-lg font-semibold">{cleaningVolumes.totalVolume} gallons</p>
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <h4 className="font-semibold mb-2">Recommended Flow Rate:</h4>
-              <p className="text-lg">{getRecommendedFlowRate(tankSizing.vesselDiameter)}</p>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
 };
 
-export default OperatingData;
+export default ROScalingAssessment;
