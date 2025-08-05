@@ -100,7 +100,7 @@ export default function LoginPage() {
           />
         </div>
         <h1 className="text-xl sm:text-2xl font-bold text-center mb-4 sm:mb-6 text-blue-800">
-          Login to RO Membrane Calculator
+          Login to Scaling Assessment Software
         </h1>
         
         <form onSubmit={handleSubmit} className="space-y-4">
