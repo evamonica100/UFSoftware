@@ -60,23 +60,23 @@ interface ScalingResults {
     caf2: { noChem: number; withTreatment: number; };
   };
   antiscalantEfficiency: number;
-   sdsi: number;  // ADD THIS LINE
-  ccpp: number;  // ADD THIS LINE
 }
 
 // Temperature-dependent Ksp calculations
 const getCaCO3Ksp = (temperature: number): number => {
   const tempK = temperature + 273.15;
-  // Plummer & Busenberg equation (industry standard)
-  const logKsp = -171.9065 - 0.077993*tempK + 2839.319/tempK + 71.595*Math.log10(tempK);
-  return Math.pow(10, logKsp);
+  const ksp25 = 3.36e-9;
+  const deltaH = -12100;
+  const R = 8.314;
+  return ksp25 * Math.exp((deltaH / R) * (1/298.15 - 1/tempK));
 };
 
 const getCaSO4Ksp = (temperature: number): number => {
-  const tempC = temperature;
-  // Marshall & Slusher equation for gypsum
-  const logKsp = -4.58 - (1.08e-3 * tempC) + (1.51e-6 * tempC * tempC);
-  return Math.pow(10, logKsp) / 1000000; // Convert to proper units
+  const tempK = temperature + 273.15;
+  const ksp25 = 2.4e-5;
+  const deltaH = 17200;
+  const R = 8.314;
+  return ksp25 * Math.exp((deltaH / R) * (1/298.15 - 1/tempK));
 };
 
 const calculateActivityCoefficient = (charge: number, ionicStrength: number): number => {
@@ -84,30 +84,6 @@ const calculateActivityCoefficient = (charge: number, ionicStrength: number): nu
   const sqrtI = Math.sqrt(ionicStrength);
   const logGamma = -A * charge * charge * sqrtI / (1 + sqrtI);
   return Math.pow(10, logGamma);
-};
-
-const calculateSaturationPH = (temp: number, tds: number, ca: number, alk: number): number => {
-  // Langelier saturation pH calculation
-  const tempK = temp + 273.15;
-  const A = 0.1 * Math.log10(tds) - 0.1;
-  const B = -13.12 + Math.log10(tempK) + 34.55;
-  const C = Math.log10(ca) - 0.4; // Ca in mg/L as CaCO3
-  const D = Math.log10(alk); // Alkalinity in mg/L as CaCO3
-  
-  return 9.3 + A + B - C - D;
-};
-
-const calculateSDSI = (ph: number, temp: number, tds: number, ca: number, alk: number): number => {
-  const pHs = calculateSaturationPH(temp, tds, ca, alk);
-  return ph - pHs;
-};
-
-const calculateCCPP = (ca: number, alk: number, ph: number, temp: number, tds: number): number => {
-  const pHs = calculateSaturationPH(temp, tds, ca, alk);
-  if (ph > pHs) {
-    return 4.54 * ca * (ph - pHs); // CCPP in mg/L as CaCO3
-  }
-  return 0;
 };
 
 const ROScalingAssessment = () => {
@@ -150,6 +126,32 @@ const ROScalingAssessment = () => {
     return efficiency / 100;
   };
 
+  // Calculate rigorous ionic strength using half-sum formula
+const calculateRigorousIonicStrength = (composition: WaterAnalysis): number => {
+  // Ion data: [concentration_mg/L, molecular_weight_g/mol, charge]
+  const ions = [
+    { conc: composition.ca, mw: 40.08, charge: 2 },     // Ca²⁺
+    { conc: composition.mg, mw: 24.31, charge: 2 },     // Mg²⁺
+    { conc: composition.na, mw: 22.99, charge: 1 },     // Na⁺
+    { conc: composition.k, mw: 39.10, charge: 1 },      // K⁺
+    { conc: composition.hco3, mw: 61.02, charge: 1 },   // HCO₃⁻
+    { conc: composition.cl, mw: 35.45, charge: 1 },     // Cl⁻
+    { conc: composition.so4, mw: 96.06, charge: 2 },    // SO₄²⁻
+    { conc: composition.f, mw: 19.00, charge: 1 }       // F⁻
+  ];
+  
+  let ionicStrength = 0;
+  
+  ions.forEach(ion => {
+    // Convert mg/L to molarity: (mg/L) / (MW g/mol × 1000)
+    const molarity = (ion.conc / 1000) / ion.mw;
+    // Add contribution: Ci × Zi²
+    ionicStrength += molarity * ion.charge * ion.charge;
+  });
+  
+  // Apply half-sum formula: I = ½ × Σ(Ci × Zi²)
+  return ionicStrength / 2;
+};
 // Calculate scaling saturation percentage
   const calculateScalingSaturation = (
     feedConc: number,
@@ -159,39 +161,39 @@ const ROScalingAssessment = () => {
   ): number => {
     
     switch (compound) {
-case 'caco3': {
-  // Convert mg/L to mg/L as CaCO3 equivalent
-  const caAsCaCO3 = concentrateComp.ca * 2.5; // Ca to CaCO3 equivalent
-  const alkAsCaCO3 = concentrateComp.hco3 * 0.82; // HCO3 to alkalinity equivalent
-  
-  // Calculate SDSI
-  const sdsi = calculateSDSI(
-    concentrateComp.ph, 
-    concentrateComp.temperature, 
-    concentrateComp.tds, 
-    caAsCaCO3, 
-    alkAsCaCO3
-  );
-  
-  // Convert SDSI to saturation percentage
-  return Math.pow(10, sdsi) * 100;
-}
+      case 'caco3': {
+        const caMolar = (concentrateComp.ca / 1000) / 40.08;
+        const hco3Molar = (concentrateComp.hco3 / 1000) / 61.02;
+        
+        const h = Math.pow(10, -concentrateComp.ph);
+        const k2 = 4.69e-11;
+        const tempK = concentrateComp.temperature + 273.15;
+        const k2Temp = k2 * Math.exp(1760 * (1/298.15 - 1/tempK));
+        
+        const co3Molar = (k2Temp * hco3Molar) / h;
+        const ionicStrength = calculateRigorousIonicStrength(concentrateComp);
+        const gammaCa = calculateActivityCoefficient(2, ionicStrength);
+        const gammaCO3 = calculateActivityCoefficient(2, ionicStrength);
+        
+        const ionProduct = (caMolar * gammaCa) * (co3Molar * gammaCO3);
+        const ksp = getCaCO3Ksp(concentrateComp.temperature);
+        
+        return (ionProduct / ksp) * 100;
+      }
       
-case 'caso4': {
-  const caMolar = (concentrateComp.ca / 1000) / 40.08;
-  const so4Molar = (concentrateComp.so4 / 1000) / 96.06;
-  
-  // Better ionic strength calculation
-  const ionicStrength = concentrateComp.tds / 40000;
-  
-  // Simplified activity coefficient
-  const gamma = Math.pow(10, -0.5 * Math.sqrt(ionicStrength));
-  
-  const ionProduct = (caMolar * gamma) * (so4Molar * gamma);
-  const ksp = getCaSO4Ksp(concentrateComp.temperature);
-  
-  return (ionProduct / ksp) * 100;
-}
+      case 'caso4': {
+        const caMolar = (concentrateComp.ca / 1000) / 40.08;
+        const so4Molar = (concentrateComp.so4 / 1000) / 96.06;
+        
+        const ionicStrength = calculateRigorousIonicStrength(concentrateComp);
+        const gammaCa = calculateActivityCoefficient(2, ionicStrength);
+        const gammaSO4 = calculateActivityCoefficient(2, ionicStrength);
+        
+        const ionProduct = (caMolar * gammaCa) * (so4Molar * gammaSO4);
+        const ksp = getCaSO4Ksp(concentrateComp.temperature);
+        
+        return (ionProduct / ksp) * 100;
+      }
       
       case 'sio2': {
         const tempK = concentrateComp.temperature + 273.15;
@@ -203,7 +205,7 @@ case 'caso4': {
         const caMolar = (concentrateComp.ca / 1000) / 40.08;
         const fMolar = (concentrateComp.f / 1000) / 18.998;
         
-        const ionicStrength = concentrateComp.tds * 1.6e-5;
+        const ionicStrength = calculateRigorousIonicStrength(concentrateComp);
         const gammaCa = calculateActivityCoefficient(2, ionicStrength);
         const gammaF = calculateActivityCoefficient(1, ionicStrength);
         
@@ -258,25 +260,6 @@ case 'caso4': {
       temperature: waterAnalysis.temperature,
     };
 
-    // Calculate SDSI and CCPP
-const caAsCaCO3 = concentrateComp.ca * 2.5;
-const alkAsCaCO3 = concentrateComp.hco3 * 0.82;
-
-const sdsi = calculateSDSI(
-  concentrateComp.ph,
-  concentrateComp.temperature,
-  concentrateComp.tds,
-  caAsCaCO3,
-  alkAsCaCO3
-);
-
-const ccpp = calculateCCPP(
-  caAsCaCO3,
-  alkAsCaCO3,
-  concentrateComp.ph,
-  concentrateComp.temperature,
-  concentrateComp.tds
-);
     // Calculate scaling saturations
 const scalingSaturation = {
       caco3: {
@@ -297,16 +280,14 @@ const scalingSaturation = {
       }
     };
 
-return {
-  concentrationFactor: concFactor,
-  feedComposition: waterAnalysis,
-  permeateComposition: permeateComp,
-  concentrateComposition: concentrateComp,
-  scalingSaturation,
-  antiscalantEfficiency: antiscalantEff * 100,
-  sdsi: sdsi,
-  ccpp: ccpp,
-};
+    return {
+      concentrationFactor: concFactor,
+      feedComposition: waterAnalysis,
+      permeateComposition: permeateComp,
+      concentrateComposition: concentrateComp,
+      scalingSaturation,
+      antiscalantEfficiency: antiscalantEff * 100, // Convert to percentage
+    };
   };
 
   // Handle calculation
@@ -643,17 +624,6 @@ return {
                     <div className="text-sm text-gray-600">Antiscalant Efficiency</div>
                     <div className="text-2xl font-bold text-green-600">{results.antiscalantEfficiency.toFixed(1)}%</div>
                   </div>
-<div className="bg-white p-3 rounded">
-  <div className="text-sm text-gray-600">SDSI</div>
-  <div className={`text-2xl font-bold ${results.sdsi > 0 ? 'text-red-600' : 'text-green-600'}`}>
-    {results.sdsi.toFixed(1)}
-  </div>
-</div>
-<div className="bg-white p-3 rounded">
-  <div className="text-sm text-gray-600">CCPP (ppm)</div>
-  <div className="text-2xl font-bold text-blue-800">{results.ccpp.toFixed(0)}</div>
-</div>
-                
                 </div>
               </div>
 
@@ -977,4 +947,3 @@ return {
   );
 };
 
-export default ROScalingAssessment;
