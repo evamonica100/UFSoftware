@@ -947,3 +947,4 @@ const scalingSaturation = {
   );
 };
 
+export default ROScalingAssessment;
