@@ -62,6 +62,30 @@ interface ScalingResults {
   antiscalantEfficiency: number;
 }
 
+// Temperature-dependent Ksp calculations
+const getCaCO3Ksp = (temperature: number): number => {
+  const tempK = temperature + 273.15;
+  const ksp25 = 3.36e-9;
+  const deltaH = -12100;
+  const R = 8.314;
+  return ksp25 * Math.exp((deltaH / R) * (1/298.15 - 1/tempK));
+};
+
+const getCaSO4Ksp = (temperature: number): number => {
+  const tempK = temperature + 273.15;
+  const ksp25 = 2.4e-5;
+  const deltaH = 17200;
+  const R = 8.314;
+  return ksp25 * Math.exp((deltaH / R) * (1/298.15 - 1/tempK));
+};
+
+const calculateActivityCoefficient = (charge: number, ionicStrength: number): number => {
+  const A = 0.5085;
+  const sqrtI = Math.sqrt(ionicStrength);
+  const logGamma = -A * charge * charge * sqrtI / (1 + sqrtI);
+  return Math.pow(10, logGamma);
+};
+
 const ROScalingAssessment = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -102,36 +126,71 @@ const ROScalingAssessment = () => {
     return efficiency / 100;
   };
 
-  // Calculate scaling saturation percentage
+// Calculate scaling saturation percentage
   const calculateScalingSaturation = (
     feedConc: number,
     concentrateConc: number,
-    compound: string
+    compound: string,
+    concentrateComp: WaterAnalysis
   ): number => {
-    let saturationLimit = 100; // Base 100% saturation
     
-    // Different compounds have different saturation limits
     switch (compound) {
-      case 'caco3':
-        // CaCO3 scaling based on Ca and HCO3 concentrations
-        saturationLimit = 2500; // mg/L equivalent
-        return (concentrateConc / saturationLimit) * 100;
+      case 'caco3': {
+        const caMolar = (concentrateComp.ca / 1000) / 40.08;
+        const hco3Molar = (concentrateComp.hco3 / 1000) / 61.02;
         
-      case 'caso4':
-        // CaSO4 scaling - more soluble than CaCO3
-        saturationLimit = 2000; // mg/L equivalent  
-        return (concentrateConc / saturationLimit) * 100;
+        const h = Math.pow(10, -concentrateComp.ph);
+        const k2 = 4.69e-11;
+        const tempK = concentrateComp.temperature + 273.15;
+        const k2Temp = k2 * Math.exp(1760 * (1/298.15 - 1/tempK));
         
-      case 'sio2':
-        // SiO2 scaling limit
-        saturationLimit = 120; // mg/L
-        return (concentrateConc / saturationLimit) * 100;
+        const co3Molar = (k2Temp * hco3Molar) / h;
+        const ionicStrength = concentrateComp.tds * 1.6e-5;
+        const gammaCa = calculateActivityCoefficient(2, ionicStrength);
+        const gammaCO3 = calculateActivityCoefficient(2, ionicStrength);
         
-      case 'caf2':
-        // CaF2 scaling - less common
-        saturationLimit = 16; // mg/L
-        return (concentrateConc / saturationLimit) * 100;
+        const ionProduct = (caMolar * gammaCa) * (co3Molar * gammaCO3);
+        const ksp = getCaCO3Ksp(concentrateComp.temperature);
         
+        return (ionProduct / ksp) * 100;
+      }
+      
+      case 'caso4': {
+        const caMolar = (concentrateComp.ca / 1000) / 40.08;
+        const so4Molar = (concentrateComp.so4 / 1000) / 96.06;
+        
+        const ionicStrength = concentrateComp.tds * 1.6e-5;
+        const gammaCa = calculateActivityCoefficient(2, ionicStrength);
+        const gammaSO4 = calculateActivityCoefficient(2, ionicStrength);
+        
+        const ionProduct = (caMolar * gammaCa) * (so4Molar * gammaSO4);
+        const ksp = getCaSO4Ksp(concentrateComp.temperature);
+        
+        return (ionProduct / ksp) * 100;
+      }
+      
+      case 'sio2': {
+        const tempK = concentrateComp.temperature + 273.15;
+        const maxSolubility = Math.exp(4.52 - 731/tempK) * 60080; // mg/L
+        return (concentrateComp.sio2 / maxSolubility) * 100;
+      }
+      
+      case 'caf2': {
+        const caMolar = (concentrateComp.ca / 1000) / 40.08;
+        const fMolar = (concentrateComp.f / 1000) / 18.998;
+        
+        const ionicStrength = concentrateComp.tds * 1.6e-5;
+        const gammaCa = calculateActivityCoefficient(2, ionicStrength);
+        const gammaF = calculateActivityCoefficient(1, ionicStrength);
+        
+        const ionProduct = (caMolar * gammaCa) * Math.pow(fMolar * gammaF, 2);
+        const ksp25 = 3.9e-11;
+        const tempK = concentrateComp.temperature + 273.15;
+        const ksp = ksp25 * Math.exp((15900/8.314) * (1/298.15 - 1/tempK));
+        
+        return (ionProduct / ksp) * 100;
+      }
+      
       default:
         return 0;
     }
@@ -171,27 +230,27 @@ const ROScalingAssessment = () => {
       f: waterAnalysis.f * concFactor,
       sio2: waterAnalysis.sio2 * concFactor,
       tds: waterAnalysis.tds * concFactor,
-      ph: waterAnalysis.ph + (0.2 * Math.log10(concFactor)), // pH increases slightly
+      ph: waterAnalysis.ph + (0.1 * Math.log10(concFactor)), // Conservative pH increase
       temperature: waterAnalysis.temperature,
     };
 
     // Calculate scaling saturations
-    const scalingSaturation = {
+const scalingSaturation = {
       caco3: {
-        noChem: calculateScalingSaturation(waterAnalysis.ca, concentrateComp.ca, 'caco3'),
-        withTreatment: calculateScalingSaturation(waterAnalysis.ca, concentrateComp.ca, 'caco3') * (1 - antiscalantEff)
+        noChem: calculateScalingSaturation(waterAnalysis.ca, concentrateComp.ca, 'caco3', concentrateComp),
+        withTreatment: calculateScalingSaturation(waterAnalysis.ca, concentrateComp.ca, 'caco3', concentrateComp) * (1 - antiscalantEff)
       },
       caso4: {
-        noChem: calculateScalingSaturation(waterAnalysis.ca, concentrateComp.ca + concentrateComp.so4, 'caso4'),
-        withTreatment: calculateScalingSaturation(waterAnalysis.ca, concentrateComp.ca + concentrateComp.so4, 'caso4') * (1 - antiscalantEff)
+        noChem: calculateScalingSaturation(waterAnalysis.ca, concentrateComp.ca, 'caso4', concentrateComp),
+        withTreatment: calculateScalingSaturation(waterAnalysis.ca, concentrateComp.ca, 'caso4', concentrateComp) * (1 - antiscalantEff)
       },
       sio2: {
-        noChem: calculateScalingSaturation(waterAnalysis.sio2, concentrateComp.sio2, 'sio2'),
-        withTreatment: calculateScalingSaturation(waterAnalysis.sio2, concentrateComp.sio2, 'sio2') * (1 - antiscalantEff * 0.3) // Less effective on SiO2
+        noChem: calculateScalingSaturation(waterAnalysis.sio2, concentrateComp.sio2, 'sio2', concentrateComp),
+        withTreatment: calculateScalingSaturation(waterAnalysis.sio2, concentrateComp.sio2, 'sio2', concentrateComp) * (1 - antiscalantEff * 0.3)
       },
       caf2: {
-        noChem: calculateScalingSaturation(waterAnalysis.f, concentrateComp.f, 'caf2'),
-        withTreatment: calculateScalingSaturation(waterAnalysis.f, concentrateComp.f, 'caf2') * (1 - antiscalantEff * 0.8)
+        noChem: calculateScalingSaturation(waterAnalysis.f, concentrateComp.f, 'caf2', concentrateComp),
+        withTreatment: calculateScalingSaturation(waterAnalysis.f, concentrateComp.f, 'caf2', concentrateComp) * (1 - antiscalantEff * 0.8)
       }
     };
 
