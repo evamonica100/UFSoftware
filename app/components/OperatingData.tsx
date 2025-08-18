@@ -254,7 +254,7 @@ const UFDesignSoftware = () => {
 
   // Main calculation function
   const calculateUFDesign = (): UFResults => {
-    const module = moduleDatabase[designCriteria.module_type];
+    const selectedModule = moduleDatabase[designCriteria.module_type];
     const warnings: string[] = [];
     const errors: string[] = [];
 
@@ -275,7 +275,7 @@ const UFDesignSoftware = () => {
     while (iterations < 5) {
       const A_need = (feedWater.Q_demand_net / f_avail) / (J_T / 1000);
       A_req = A_need * designCriteria.safety_factor_area;
-      n_mod_per_train = Math.ceil(A_req / module.area_m2);
+      n_mod_per_train = Math.ceil(A_req / selectedModule.area_m2);
 
       // Calculate availability factors
       const t_np = backwashSettings.t_AS_s + backwashSettings.t_GD_s + 
@@ -305,10 +305,10 @@ const UFDesignSoftware = () => {
     const net_flux = average_flux * (designCriteria.recovery_target / 100);
 
     // 4. Backwash calculations
-    const A_train = n_mod_per_train * module.area_m2;
+    const A_train = n_mod_per_train * selectedModule.area_m2;
     const Q_BW = (backwashSettings.J_BW * A_train) / 1000; // m³/h
     
-    const V_AS = n_mod_per_train * module.vol_module_L * 0.15 / 1000; // 15% displacement
+    const V_AS = n_mod_per_train * selectedModule.vol_module_L * 0.15 / 1000; // 15% displacement
     const V_BWtop = Q_BW * backwashSettings.t_BWTop_s / 3600;
     const V_BWbot = Q_BW * backwashSettings.t_BWBot_s / 3600;
     const V_FF = Q_gross * 0.8 * backwashSettings.t_FF_s / 3600; // 80% of feed flow
@@ -316,7 +316,7 @@ const UFDesignSoftware = () => {
     const V_BW_tank = V_cycle * 1.3; // 30% safety factor
 
     // 5. CIP tank sizing
-    const vol_modules = (n_mod_per_train * module.vol_module_L) / 1000;
+    const vol_modules = (n_mod_per_train * selectedModule.vol_module_L) / 1000;
     const vol_piping = vol_modules * 0.2; // Estimate 20% of module volume
     const V_CIP_tank = vol_modules + vol_piping + 0.5; // 0.5 m³ NPSH allowance
 
@@ -324,8 +324,8 @@ const UFDesignSoftware = () => {
     const feed_pump_flow = Q_gross;
     const feed_pump_head = 15 + 5 + 8; // Static + losses + TMP (rough estimate)
     const backwash_pump_flow = Q_BW;
-    const cip_pump_flow = n_mod_per_train * module.CIP_flow_m3h_per_mod;
-    const air_blower_flow = n_mod_per_train * module.air_scour_Nm3h;
+    const cip_pump_flow = n_mod_per_train * selectedModule.CIP_flow_m3h_per_mod;
+    const air_blower_flow = n_mod_per_train * selectedModule.air_scour_Nm3h;
 
     // 7. Chemical consumption
     const V_CEB = vol_modules + vol_piping; // Volume to be soaked
