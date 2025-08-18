@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { Bar } from "react-chartjs-2";
 import * as XLSX from 'xlsx';
 import {
@@ -22,284 +22,381 @@ ChartJS.register(
   Legend,
 );
 
-interface WaterAnalysis {
-  // Cations (mg/L)
-  ca: number;
-  mg: number;
-  na: number;
-  k: number;
-  // Anions (mg/L)
-  hco3: number;
-  cl: number;
-  so4: number;
-  f: number;
-  sio2: number;
-  // Other parameters
-  tds: number;
-  ph: number;
+interface FeedWaterAnalysis {
+  Q_demand_net: number;
   temperature: number;
+  pH: number;
+  tds: number;
+  tss: number;
+  turbidity: number;
+  sdi15: number;
+  toc: number;
 }
 
-interface SystemParameters {
-  feedFlow: number;
-  permeateFlow: number;
-  recovery: number;
-  membraneRejection: number; // Overall rejection %
-  antiscalantDose: number;
+interface DesignCriteria {
+  flux25_target: number;
+  temp_correction_theta: number;
+  recovery_target: number;
+  n_trains_online: number;
+  n_trains_redundant: number;
+  safety_factor_area: number;
+  module_type: string;
 }
 
-interface ScalingResults {
-  concentrationFactor: number;
-  feedComposition: WaterAnalysis;
-  permeateComposition: WaterAnalysis;
-  concentrateComposition: WaterAnalysis;
-  scalingSaturation: {
-    caco3: { noChem: number; withTreatment: number; };
-    caso4: { noChem: number; withTreatment: number; };
-    sio2: { noChem: number; withTreatment: number; };
-    caf2: { noChem: number; withTreatment: number; };
-  };
-  antiscalantEfficiency: number;
+interface BackwashSettings {
+  interval_min: number;
+  J_BW: number;
+  t_AS_s: number;
+  t_GD_s: number;
+  t_BWTop_s: number;
+  t_BWBot_s: number;
+  t_FF_s: number;
 }
 
-// Temperature-dependent Ksp calculations
-const getCaCO3Ksp = (temperature: number): number => {
-  const tempK = temperature + 273.15;
-  const ksp25 = 3.36e-9;
-  const deltaH = -12100;
-  const R = 8.314;
-  return ksp25 * Math.exp((deltaH / R) * (1/298.15 - 1/tempK));
-};
+interface CEBSettings {
+  enabled: boolean;
+  frequency_h: number;
+  soak_min: number;
+  chemical_type: string;
+  target_concentration: number;
+  target_pH: number;
+}
 
-const getCaSO4Ksp = (temperature: number): number => {
-  const tempK = temperature + 273.15;
-  const ksp25 = 2.4e-5;
-  const deltaH = 17200;
-  const R = 8.314;
-  return ksp25 * Math.exp((deltaH / R) * (1/298.15 - 1/tempK));
-};
+interface CIPSettings {
+  frequency_days: number;
+  alkali_pH: number;
+  acid_pH: number;
+  temperature: number;
+  recycle_temp: number;
+}
 
-const calculateActivityCoefficient = (charge: number, ionicStrength: number): number => {
-  const A = 0.5085;
-  const sqrtI = Math.sqrt(ionicStrength);
-  const logGamma = -A * charge * charge * sqrtI / (1 + sqrtI);
-  return Math.pow(10, logGamma);
-};
+interface HydraulicSettings {
+  max_inlet_pressure: number;
+  max_TMP_run: number;
+  max_TMP_BW: number;
+  air_pressure_range: number;
+  idle_switch_s: number;
+  valve_stagger_s: number;
+}
 
-const ROScalingAssessment = () => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+interface ModuleSpec {
+  area_m2: number;
+  vol_module_L: number;
+  max_inlet_bar: number;
+  max_TMP_bar: number;
+  max_TMP_BW_bar: number;
+  air_scour_Nm3h: number;
+  CIP_flow_m3h_per_mod: number;
+  length_mm: number;
+  diameter_mm: number;
+  weight_kg: number;
+}
+
+interface UFResults {
+  // Basic calculations
+  J_T: number;
+  A_req: number;
+  n_mod_per_train: number;
+  total_modules: number;
+  Q_gross: number;
+  concentration_factor: number;
   
-  const [waterAnalysis, setWaterAnalysis] = useState<WaterAnalysis>({
-    ca: 355,
-    mg: 1150,
-    na: 10700,
-    k: 360,
-    hco3: 152.39,
-    cl: 18400,
-    so4: 2900,
-    f: 1.8,
-    sio2: 1.0,
-    tds: 34020,
-    ph: 6.8,
-    temperature: 32,
-  });
-
-  const [systemParams, setSystemParams] = useState<SystemParameters>({
-    feedFlow: 398,
-    permeateFlow: 326.4,
-    recovery: 82,
-    membraneRejection: 99.3, // Overall rejection %
-    antiscalantDose: 2.0, // mg/L
-  });
-
-  const [results, setResults] = useState<ScalingResults | null>(null);
-
-  // Calculate concentration factor
-  const calculateConcentrationFactor = (recovery: number): number => {
-    return 1 / (1 - recovery / 100);
-  };
-
-  // Calculate antiscalant efficiency based on dose
-  const calculateAntiscalantEfficiency = (dose: number): number => {
-    // Simplified efficiency: 2 mg/L gives ~50% reduction in scaling potential
-    const efficiency = Math.min(dose * 25, 80); // Max 80% reduction
-    return efficiency / 100;
-  };
-
-  // Calculate rigorous ionic strength using half-sum formula
-const calculateRigorousIonicStrength = (composition: WaterAnalysis): number => {
-  // Ion data: [concentration_mg/L, molecular_weight_g/mol, charge]
-  const ions = [
-    { conc: composition.ca, mw: 40.08, charge: 2 },     // Ca²⁺
-    { conc: composition.mg, mw: 24.31, charge: 2 },     // Mg²⁺
-    { conc: composition.na, mw: 22.99, charge: 1 },     // Na⁺
-    { conc: composition.k, mw: 39.10, charge: 1 },      // K⁺
-    { conc: composition.hco3, mw: 61.02, charge: 1 },   // HCO₃⁻
-    { conc: composition.cl, mw: 35.45, charge: 1 },     // Cl⁻
-    { conc: composition.so4, mw: 96.06, charge: 2 },    // SO₄²⁻
-    { conc: composition.f, mw: 19.00, charge: 1 }       // F⁻
-  ];
+  // Availability calculations
+  f_avail: number;
+  f_BW: number;
+  f_CEB: number;
+  f_CIP: number;
   
-  let ionicStrength = 0;
+  // Flux rates
+  instantaneous_flux: number;
+  average_flux: number;
+  net_flux: number;
   
-  ions.forEach(ion => {
-    // Convert mg/L to molarity: (mg/L) / (MW g/mol × 1000)
-    const molarity = (ion.conc / 1000) / ion.mw;
-    // Add contribution: Ci × Zi²
-    ionicStrength += molarity * ion.charge * ion.charge;
-  });
+  // Backwash calculations
+  Q_BW: number;
+  V_cycle: number;
+  V_BW_tank: number;
+  V_CIP_tank: number;
   
-  // Apply half-sum formula: I = ½ × Σ(Ci × Zi²)
-  return ionicStrength / 2;
-};
-// Calculate scaling saturation percentage
-  const calculateScalingSaturation = (
-    feedConc: number,
-    concentrateConc: number,
-    compound: string,
-    concentrateComp: WaterAnalysis
-  ): number => {
-    
-    switch (compound) {
-      case 'caco3': {
-        const caMolar = (concentrateComp.ca / 1000) / 40.08;
-        const hco3Molar = (concentrateComp.hco3 / 1000) / 61.02;
-        
-        const h = Math.pow(10, -concentrateComp.ph);
-        const k2 = 4.69e-11;
-        const tempK = concentrateComp.temperature + 273.15;
-        const k2Temp = k2 * Math.exp(1760 * (1/298.15 - 1/tempK));
-        
-        const co3Molar = (k2Temp * hco3Molar) / h;
-        const ionicStrength = calculateRigorousIonicStrength(concentrateComp);
-        const gammaCa = calculateActivityCoefficient(2, ionicStrength);
-        const gammaCO3 = calculateActivityCoefficient(2, ionicStrength);
-        
-        const ionProduct = (caMolar * gammaCa) * (co3Molar * gammaCO3);
-        const ksp = getCaCO3Ksp(concentrateComp.temperature);
-        
-        return (ionProduct / ksp) * 100;
-      }
-      
-      case 'caso4': {
-        const caMolar = (concentrateComp.ca / 1000) / 40.08;
-        const so4Molar = (concentrateComp.so4 / 1000) / 96.06;
-        
-        const ionicStrength = calculateRigorousIonicStrength(concentrateComp);
-        const gammaCa = calculateActivityCoefficient(2, ionicStrength);
-        const gammaSO4 = calculateActivityCoefficient(2, ionicStrength);
-        
-        const ionProduct = (caMolar * gammaCa) * (so4Molar * gammaSO4);
-        const ksp = getCaSO4Ksp(concentrateComp.temperature);
-        
-        return (ionProduct / ksp) * 100;
-      }
-      
-      case 'sio2': {
-        const tempK = concentrateComp.temperature + 273.15;
-        const maxSolubility = Math.exp(4.52 - 731/tempK) * 60080; // mg/L
-        return (concentrateComp.sio2 / maxSolubility) * 100;
-      }
-      
-      case 'caf2': {
-        const caMolar = (concentrateComp.ca / 1000) / 40.08;
-        const fMolar = (concentrateComp.f / 1000) / 18.998;
-        
-        const ionicStrength = calculateRigorousIonicStrength(concentrateComp);
-        const gammaCa = calculateActivityCoefficient(2, ionicStrength);
-        const gammaF = calculateActivityCoefficient(1, ionicStrength);
-        
-        const ionProduct = (caMolar * gammaCa) * Math.pow(fMolar * gammaF, 2);
-        const ksp25 = 3.9e-11;
-        const tempK = concentrateComp.temperature + 273.15;
-        const ksp = ksp25 * Math.exp((15900/8.314) * (1/298.15 - 1/tempK));
-        
-        return (ionProduct / ksp) * 100;
-      }
-      
-      default:
-        return 0;
+  // Equipment sizing
+  feed_pump_flow: number;
+  feed_pump_head: number;
+  backwash_pump_flow: number;
+  cip_pump_flow: number;
+  air_blower_flow: number;
+  
+  // Chemical consumption
+  ceb_chemical_consumption: number;
+  bw_water_consumption: number;
+  
+  // Water quality predictions
+  expected_turbidity: number;
+  expected_toc_removal: number;
+  expected_sdi: number;
+  
+  // Validation warnings
+  warnings: string[];
+  errors: string[];
+}
+
+const UFDesignSoftware = () => {
+  // Module database
+  const moduleDatabase: Record<string, ModuleSpec> = {
+    "8060-PVDF": {
+      area_m2: 73,
+      vol_module_L: 40,
+      max_inlet_bar: 6.25,
+      max_TMP_bar: 2.1,
+      max_TMP_BW_bar: 2.5,
+      air_scour_Nm3h: 12,
+      CIP_flow_m3h_per_mod: 1.0,
+      length_mm: 1742.5,
+      diameter_mm: 172.5,
+      weight_kg: 73
+    },
+    "8080-PVDF": {
+      area_m2: 73,
+      vol_module_L: 50,
+      max_inlet_bar: 6.25,
+      max_TMP_bar: 2.1,
+      max_TMP_BW_bar: 2.5,
+      air_scour_Nm3h: 12,
+      CIP_flow_m3h_per_mod: 1.0,
+      length_mm: 2242.5,
+      diameter_mm: 172.5,
+      weight_kg: 73
+    },
+    "2860-PVDF": {
+      area_m2: 180,
+      vol_module_L: 45,
+      max_inlet_bar: 6.25,
+      max_TMP_bar: 2.1,
+      max_TMP_BW_bar: 2.5,
+      air_scour_Nm3h: 12,
+      CIP_flow_m3h_per_mod: 1.5,
+      length_mm: 1860,
+      diameter_mm: 180,
+      weight_kg: 180
+    },
+    "2880-PVDF": {
+      area_m2: 180,
+      vol_module_L: 60,
+      max_inlet_bar: 6.25,
+      max_TMP_bar: 2.1,
+      max_TMP_BW_bar: 2.5,
+      air_scour_Nm3h: 12,
+      CIP_flow_m3h_per_mod: 1.5,
+      length_mm: 2360,
+      diameter_mm: 180,
+      weight_kg: 180
     }
   };
 
+  // State management
+  const [feedWater, setFeedWater] = useState<FeedWaterAnalysis>({
+    Q_demand_net: 39.0,
+    temperature: 25,
+    pH: 6.8,
+    tds: 34152,
+    tss: 2.0,
+    turbidity: 0.5,
+    sdi15: 3.0,
+    toc: 1.5
+  });
+
+  const [designCriteria, setDesignCriteria] = useState<DesignCriteria>({
+    flux25_target: 100,
+    temp_correction_theta: 1.025,
+    recovery_target: 98,
+    n_trains_online: 1,
+    n_trains_redundant: 0,
+    safety_factor_area: 1.2,
+    module_type: "2880-PVDF"
+  });
+
+  const [backwashSettings, setBackwashSettings] = useState<BackwashSettings>({
+    interval_min: 90,
+    J_BW: 100,
+    t_AS_s: 20,
+    t_GD_s: 30,
+    t_BWTop_s: 30,
+    t_BWBot_s: 30,
+    t_FF_s: 45
+  });
+
+  const [cebSettings, setCebSettings] = useState<CEBSettings>({
+    enabled: true,
+    frequency_h: 168,
+    soak_min: 10,
+    chemical_type: "NaOCl",
+    target_concentration: 350,
+    target_pH: 11
+  });
+
+  const [cipSettings, setCipSettings] = useState<CIPSettings>({
+    frequency_days: 90,
+    alkali_pH: 12,
+    acid_pH: 2,
+    temperature: 35,
+    recycle_temp: 35
+  });
+
+  const [hydraulicSettings, setHydraulicSettings] = useState<HydraulicSettings>({
+    max_inlet_pressure: 6.25,
+    max_TMP_run: 2.1,
+    max_TMP_BW: 2.5,
+    air_pressure_range: 0.75,
+    idle_switch_s: 6,
+    valve_stagger_s: 1
+  });
+
+  const [results, setResults] = useState<UFResults | null>(null);
+
   // Main calculation function
-  const calculateScaling = (): ScalingResults => {
-    const concFactor = calculateConcentrationFactor(systemParams.recovery);
-    const rejectionDecimal = systemParams.membraneRejection / 100;
-    const antiscalantEff = calculateAntiscalantEfficiency(systemParams.antiscalantDose);
+  const calculateUFDesign = (): UFResults => {
+    const module = moduleDatabase[designCriteria.module_type];
+    const warnings: string[] = [];
+    const errors: string[] = [];
 
-    // Calculate permeate composition (what passes through membrane)
-    const permeateComp: WaterAnalysis = {
-      ca: waterAnalysis.ca * (1 - rejectionDecimal),
-      mg: waterAnalysis.mg * (1 - rejectionDecimal),
-      na: waterAnalysis.na * (1 - rejectionDecimal),
-      k: waterAnalysis.k * (1 - rejectionDecimal),
-      hco3: waterAnalysis.hco3 * (1 - rejectionDecimal),
-      cl: waterAnalysis.cl * (1 - rejectionDecimal),
-      so4: waterAnalysis.so4 * (1 - rejectionDecimal),
-      f: waterAnalysis.f * (1 - rejectionDecimal),
-      sio2: waterAnalysis.sio2 * (1 - rejectionDecimal),
-      tds: waterAnalysis.tds * (1 - rejectionDecimal),
-      ph: waterAnalysis.ph, // pH doesn't concentrate linearly
-      temperature: waterAnalysis.temperature,
-    };
+    // Validation
+    if (designCriteria.flux25_target < 40 || designCriteria.flux25_target > 110) {
+      warnings.push(`Flux target ${designCriteria.flux25_target} LMH is outside recommended range (40-110 LMH)`);
+    }
 
-    // Calculate concentrate composition (concentrated reject stream)
-    const concentrateComp: WaterAnalysis = {
-      ca: waterAnalysis.ca * concFactor,
-      mg: waterAnalysis.mg * concFactor,
-      na: waterAnalysis.na * concFactor,
-      k: waterAnalysis.k * concFactor,
-      hco3: waterAnalysis.hco3 * concFactor,
-      cl: waterAnalysis.cl * concFactor,
-      so4: waterAnalysis.so4 * concFactor,
-      f: waterAnalysis.f * concFactor,
-      sio2: waterAnalysis.sio2 * concFactor,
-      tds: waterAnalysis.tds * concFactor,
-      ph: waterAnalysis.ph + (0.1 * Math.log10(concFactor)), // Conservative pH increase
-      temperature: waterAnalysis.temperature,
-    };
+    // 1. Temperature correction
+    const J_T = designCriteria.flux25_target * Math.pow(designCriteria.temp_correction_theta, (feedWater.temperature - 25));
 
-    // Calculate scaling saturations
-const scalingSaturation = {
-      caco3: {
-        noChem: calculateScalingSaturation(waterAnalysis.ca, concentrateComp.ca, 'caco3', concentrateComp),
-        withTreatment: calculateScalingSaturation(waterAnalysis.ca, concentrateComp.ca, 'caco3', concentrateComp) * (1 - antiscalantEff)
-      },
-      caso4: {
-        noChem: calculateScalingSaturation(waterAnalysis.ca, concentrateComp.ca, 'caso4', concentrateComp),
-        withTreatment: calculateScalingSaturation(waterAnalysis.ca, concentrateComp.ca, 'caso4', concentrateComp) * (1 - antiscalantEff)
-      },
-      sio2: {
-        noChem: calculateScalingSaturation(waterAnalysis.sio2, concentrateComp.sio2, 'sio2', concentrateComp),
-        withTreatment: calculateScalingSaturation(waterAnalysis.sio2, concentrateComp.sio2, 'sio2', concentrateComp) * (1 - antiscalantEff * 0.3)
-      },
-      caf2: {
-        noChem: calculateScalingSaturation(waterAnalysis.f, concentrateComp.f, 'caf2', concentrateComp),
-        withTreatment: calculateScalingSaturation(waterAnalysis.f, concentrateComp.f, 'caf2', concentrateComp) * (1 - antiscalantEff * 0.8)
-      }
-    };
+    // 2. Initial area calculation with iterative availability
+    let f_avail = 0.98; // Initial guess
+    let A_req = 0;
+    let n_mod_per_train = 0;
+    let iterations = 0;
+
+    while (iterations < 5) {
+      const A_need = (feedWater.Q_demand_net / f_avail) / (J_T / 1000);
+      A_req = A_need * designCriteria.safety_factor_area;
+      n_mod_per_train = Math.ceil(A_req / module.area_m2);
+
+      // Calculate availability factors
+      const t_np = backwashSettings.t_AS_s + backwashSettings.t_GD_s + 
+                   backwashSettings.t_BWTop_s + backwashSettings.t_BWBot_s + 
+                   backwashSettings.t_FF_s;
+      const f_BW = (backwashSettings.interval_min * 60) / (backwashSettings.interval_min * 60 + t_np);
+      
+      const ceb_duration_h = cebSettings.enabled ? (t_np / 3600 + cebSettings.soak_min / 60) : 0;
+      const f_CEB = cebSettings.enabled ? (1 - ceb_duration_h / cebSettings.frequency_h) : 1;
+      
+      const cip_duration_h = 5; // Typical CIP duration
+      const f_CIP = 1 - cip_duration_h / (cipSettings.frequency_days * 24);
+      
+      const f_avail_new = f_BW * f_CEB * f_CIP;
+      
+      if (Math.abs(f_avail_new - f_avail) < 0.005) break;
+      f_avail = f_avail_new;
+      iterations++;
+    }
+
+    const Q_gross = feedWater.Q_demand_net / f_avail;
+    const total_modules = n_mod_per_train * (designCriteria.n_trains_online + designCriteria.n_trains_redundant);
+
+    // 3. Flux calculations
+    const instantaneous_flux = J_T;
+    const average_flux = J_T * f_avail;
+    const net_flux = average_flux * (designCriteria.recovery_target / 100);
+
+    // 4. Backwash calculations
+    const A_train = n_mod_per_train * module.area_m2;
+    const Q_BW = (backwashSettings.J_BW * A_train) / 1000; // m³/h
+    
+    const V_AS = n_mod_per_train * module.vol_module_L * 0.15 / 1000; // 15% displacement
+    const V_BWtop = Q_BW * backwashSettings.t_BWTop_s / 3600;
+    const V_BWbot = Q_BW * backwashSettings.t_BWBot_s / 3600;
+    const V_FF = Q_gross * 0.8 * backwashSettings.t_FF_s / 3600; // 80% of feed flow
+    const V_cycle = V_AS + V_BWtop + V_BWbot + V_FF;
+    const V_BW_tank = V_cycle * 1.3; // 30% safety factor
+
+    // 5. CIP tank sizing
+    const vol_modules = (n_mod_per_train * module.vol_module_L) / 1000;
+    const vol_piping = vol_modules * 0.2; // Estimate 20% of module volume
+    const V_CIP_tank = vol_modules + vol_piping + 0.5; // 0.5 m³ NPSH allowance
+
+    // 6. Equipment sizing
+    const feed_pump_flow = Q_gross;
+    const feed_pump_head = 15 + 5 + 8; // Static + losses + TMP (rough estimate)
+    const backwash_pump_flow = Q_BW;
+    const cip_pump_flow = n_mod_per_train * module.CIP_flow_m3h_per_mod;
+    const air_blower_flow = n_mod_per_train * module.air_scour_Nm3h;
+
+    // 7. Chemical consumption
+    const V_CEB = vol_modules + vol_piping; // Volume to be soaked
+    const ceb_chemical_mass = cebSettings.target_concentration * V_CEB * 1000; // mg
+    const ceb_chemical_consumption = ceb_chemical_mass / 1000000; // kg per event
+
+    const bw_cycles_per_hour = 60 / backwashSettings.interval_min;
+    const bw_water_consumption = V_cycle * bw_cycles_per_hour; // m³/h
+
+    // 8. Water quality predictions
+    const expected_turbidity = Math.max(0.1, feedWater.turbidity * 0.01); // 99% removal
+    const expected_toc_removal = Math.min(15, Math.max(5, feedWater.toc * 0.1)); // 5-15% removal
+    const expected_sdi = Math.min(2.5, feedWater.sdi15 * 0.8); // Improvement
+
+    // 9. Concentration factor (for reference)
+    const concentration_factor = 1 / (1 - designCriteria.recovery_target / 100);
+
+    // 10. Additional validations
+    if (Q_BW * 3600 / A_train > 120) {
+      warnings.push("Backwash flux exceeds 120 LMH recommendation");
+    }
+    
+    if (air_blower_flow > 200) {
+      warnings.push("High air scour requirement may need multiple blowers");
+    }
+
+    if (n_mod_per_train > 12) {
+      warnings.push("Consider splitting into multiple trains for better operability");
+    }
 
     return {
-      concentrationFactor: concFactor,
-      feedComposition: waterAnalysis,
-      permeateComposition: permeateComp,
-      concentrateComposition: concentrateComp,
-      scalingSaturation,
-      antiscalantEfficiency: antiscalantEff * 100, // Convert to percentage
+      J_T,
+      A_req,
+      n_mod_per_train,
+      total_modules,
+      Q_gross,
+      concentration_factor,
+      f_avail,
+      f_BW: f_avail, // Simplified for display
+      f_CEB: 1,
+      f_CIP: 1,
+      instantaneous_flux,
+      average_flux,
+      net_flux,
+      Q_BW,
+      V_cycle,
+      V_BW_tank,
+      V_CIP_tank,
+      feed_pump_flow,
+      feed_pump_head,
+      backwash_pump_flow,
+      cip_pump_flow,
+      air_blower_flow,
+      ceb_chemical_consumption,
+      bw_water_consumption,
+      expected_turbidity,
+      expected_toc_removal,
+      expected_sdi,
+      warnings,
+      errors
     };
   };
 
-  // Handle calculation
   const handleCalculate = () => {
-    const calculatedResults = calculateScaling();
+    const calculatedResults = calculateUFDesign();
     setResults(calculatedResults);
-    localStorage.setItem("roScalingResults", JSON.stringify(calculatedResults));
-    localStorage.setItem("waterAnalysis", JSON.stringify(waterAnalysis));
-    localStorage.setItem("systemParams", JSON.stringify(systemParams));
+    localStorage.setItem("ufDesignResults", JSON.stringify(calculatedResults));
+    localStorage.setItem("feedWater", JSON.stringify(feedWater));
+    localStorage.setItem("designCriteria", JSON.stringify(designCriteria));
   };
 
-  // Export results to Excel
   const exportToExcel = () => {
     if (!results) {
       alert("Please calculate results first");
@@ -308,56 +405,66 @@ const scalingSaturation = {
 
     const wb = XLSX.utils.book_new();
 
-    // System Information
-    const systemInfo = [
-      ["System Information", "", ""],
-      ["Feed Water Type", "Sea Water", ""],
-      ["Feed Water Flow", systemParams.feedFlow, "m³/hr"],
-      ["Permeate Flow", systemParams.permeateFlow, "m³/hr"],
-      ["System Recovery", systemParams.recovery, "%"],
-      ["Feed Temperature", waterAnalysis.temperature, "°C"],
-      ["Membrane Rejection", systemParams.membraneRejection, "%"],
+    // System Overview
+    const systemOverview = [
+      ["UF System Design Summary", "", ""],
+      ["Design Capacity", feedWater.Q_demand_net, "m³/h"],
+      ["Module Type", designCriteria.module_type, ""],
+      ["Number of Trains", designCriteria.n_trains_online, ""],
+      ["Modules per Train", results.n_mod_per_train, ""],
+      ["Total Modules", results.total_modules, ""],
+      ["Operating Flux", results.instantaneous_flux.toFixed(1), "LMH"],
+      ["Recovery Rate", designCriteria.recovery_target, "%"],
+      ["System Availability", (results.f_avail * 100).toFixed(1), "%"],
       ["", "", ""],
-      ["Antiscalant Dose Rate", systemParams.antiscalantDose, "mg/L Feed"],
-      ["", "", ""],
+      ["Feed Water Quality", "", ""],
+      ["Temperature", feedWater.temperature, "°C"],
+      ["pH", feedWater.pH, ""],
+      ["Turbidity", feedWater.turbidity, "NTU"],
+      ["TSS", feedWater.tss, "mg/L"],
+      ["TDS", feedWater.tds, "mg/L"],
+      ["SDI15", feedWater.sdi15, ""],
+      ["TOC", feedWater.toc, "mg/L"],
     ];
 
-    // Water Analysis
-    const waterAnalysisData = [
-      ["Water Analysis", "Feed", "Permeate", "Concentrate"],
-      ["Ions (mg/L)", "", "", ""],
-      ["Ca", results.feedComposition.ca, results.permeateComposition.ca.toFixed(2), results.concentrateComposition.ca.toFixed(0)],
-      ["Mg", results.feedComposition.mg, results.permeateComposition.mg.toFixed(2), results.concentrateComposition.mg.toFixed(0)],
-      ["Na", results.feedComposition.na, results.permeateComposition.na.toFixed(2), results.concentrateComposition.na.toFixed(0)],
-      ["K", results.feedComposition.k, results.permeateComposition.k.toFixed(2), results.concentrateComposition.k.toFixed(0)],
-      ["HCO3", results.feedComposition.hco3, results.permeateComposition.hco3.toFixed(2), results.concentrateComposition.hco3.toFixed(0)],
-      ["Cl", results.feedComposition.cl, results.permeateComposition.cl.toFixed(2), results.concentrateComposition.cl.toFixed(0)],
-      ["SO4", results.feedComposition.so4, results.permeateComposition.so4.toFixed(2), results.concentrateComposition.so4.toFixed(0)],
-      ["F", results.feedComposition.f, results.permeateComposition.f.toFixed(2), results.concentrateComposition.f.toFixed(2)],
-      ["SiO2", results.feedComposition.sio2, results.permeateComposition.sio2.toFixed(2), results.concentrateComposition.sio2.toFixed(2)],
-      ["TDS", results.feedComposition.tds, results.permeateComposition.tds.toFixed(0), results.concentrateComposition.tds.toFixed(0)],
-      ["pH", results.feedComposition.ph, results.permeateComposition.ph.toFixed(2), results.concentrateComposition.ph.toFixed(2)],
-    ];
-
-    // Scaling Results
-    const scalingData = [
-      ["Scaling Analysis", "No Chem (%)", "With Treatment (%)"],
-      ["CaCO3", results.scalingSaturation.caco3.noChem.toFixed(1), results.scalingSaturation.caco3.withTreatment.toFixed(1)],
-      ["CaSO4", results.scalingSaturation.caso4.noChem.toFixed(1), results.scalingSaturation.caso4.withTreatment.toFixed(1)],
-      ["SiO2", results.scalingSaturation.sio2.noChem.toFixed(1), results.scalingSaturation.sio2.withTreatment.toFixed(1)],
-      ["CaF2", results.scalingSaturation.caf2.noChem.toFixed(1), results.scalingSaturation.caf2.withTreatment.toFixed(1)],
+    // Equipment Sizing
+    const equipmentSizing = [
+      ["Equipment Sizing", "Capacity", "Unit"],
+      ["Feed Pump Flow", results.feed_pump_flow.toFixed(1), "m³/h"],
+      ["Feed Pump Head", results.feed_pump_head.toFixed(1), "m"],
+      ["Backwash Pump Flow", results.backwash_pump_flow.toFixed(1), "m³/h"],
+      ["CIP Pump Flow", results.cip_pump_flow.toFixed(1), "m³/h"],
+      ["Air Blower", results.air_blower_flow.toFixed(0), "Nm³/h"],
+      ["BW/Filtrate Tank", results.V_BW_tank.toFixed(1), "m³"],
+      ["CIP Tank", results.V_CIP_tank.toFixed(1), "m³"],
       ["", "", ""],
-      ["Concentration Factor", results.concentrationFactor.toFixed(2), ""],
-      ["Antiscalant Efficiency", results.antiscalantEfficiency.toFixed(1) + "%", ""],
+      ["Operating Cycles", "", ""],
+      ["Filtration Duration", backwashSettings.interval_min, "min"],
+      ["Backwash Duration", ((backwashSettings.t_AS_s + backwashSettings.t_GD_s + backwashSettings.t_BWTop_s + backwashSettings.t_BWBot_s + backwashSettings.t_FF_s) / 60).toFixed(1), "min"],
+      ["CEB Frequency", cebSettings.frequency_h, "hours"],
+      ["CIP Frequency", cipSettings.frequency_days, "days"],
     ];
 
-    const systemWs = XLSX.utils.aoa_to_sheet(systemInfo);
-    const waterWs = XLSX.utils.aoa_to_sheet(waterAnalysisData);
-    const scalingWs = XLSX.utils.aoa_to_sheet(scalingData);
+    // Performance Predictions
+    const performance = [
+      ["Performance Predictions", "Feed", "Product"],
+      ["Turbidity (NTU)", feedWater.turbidity, results.expected_turbidity.toFixed(2)],
+      ["SDI15", feedWater.sdi15, results.expected_sdi.toFixed(1)],
+      ["TOC (mg/L)", feedWater.toc, (feedWater.toc - results.expected_toc_removal).toFixed(1)],
+      ["", "", ""],
+      ["Utility Consumption", "Value", "Unit"],
+      ["Backwash Water", results.bw_water_consumption.toFixed(1), "m³/h"],
+      ["CEB Chemical", results.ceb_chemical_consumption.toFixed(2), "kg/event"],
+      ["Air for Scour", results.air_blower_flow.toFixed(0), "Nm³/h"],
+    ];
 
-    XLSX.utils.book_append_sheet(wb, systemWs, "System Info");
-    XLSX.utils.book_append_sheet(wb, waterWs, "Water Analysis");
-    XLSX.utils.book_append_sheet(wb, scalingWs, "Scaling Results");
+    const systemWs = XLSX.utils.aoa_to_sheet(systemOverview);
+    const equipmentWs = XLSX.utils.aoa_to_sheet(equipmentSizing);
+    const performanceWs = XLSX.utils.aoa_to_sheet(performance);
+
+    XLSX.utils.book_append_sheet(wb, systemWs, "System Overview");
+    XLSX.utils.book_append_sheet(wb, equipmentWs, "Equipment Sizing");
+    XLSX.utils.book_append_sheet(wb, performanceWs, "Performance");
 
     const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -365,22 +472,22 @@ const scalingSaturation = {
     const url = URL.createObjectURL(data);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'RO_Scaling_Assessment.xlsx';
+    link.download = 'UF_System_Design.xlsx';
     link.click();
     URL.revokeObjectURL(url);
   };
 
   // Load saved data on component mount
   useEffect(() => {
-    const savedWaterAnalysis = localStorage.getItem("waterAnalysis");
-    const savedSystemParams = localStorage.getItem("systemParams");
-    const savedResults = localStorage.getItem("roScalingResults");
+    const savedFeedWater = localStorage.getItem("feedWater");
+    const savedDesignCriteria = localStorage.getItem("designCriteria");
+    const savedResults = localStorage.getItem("ufDesignResults");
 
-    if (savedWaterAnalysis) {
-      setWaterAnalysis(JSON.parse(savedWaterAnalysis));
+    if (savedFeedWater) {
+      setFeedWater(JSON.parse(savedFeedWater));
     }
-    if (savedSystemParams) {
-      setSystemParams(JSON.parse(savedSystemParams));
+    if (savedDesignCriteria) {
+      setDesignCriteria(JSON.parse(savedDesignCriteria));
     }
     if (savedResults) {
       setResults(JSON.parse(savedResults));
@@ -390,182 +497,31 @@ const scalingSaturation = {
   return (
     <div className="bg-white p-6 rounded-lg shadow-lg max-w-7xl mx-auto">
       <h2 className="text-2xl font-bold text-blue-800 mb-6">
-        RO Membrane Scaling Potential Assessment
+        UF System Design Software
       </h2>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Input Section */}
         <div className="space-y-6">
-          {/* System Parameters */}
+          {/* Feed Water & Project Info */}
           <div className="bg-blue-50 p-4 rounded-lg">
-            <h3 className="text-lg font-semibold text-blue-700 mb-4">System Information</h3>
+            <h3 className="text-lg font-semibold text-blue-700 mb-4">Feed Water & Project Information</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Feed Flow (m³/hr)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Net Product Demand (m³/h)</label>
                 <input
                   type="number"
-                  value={systemParams.feedFlow}
-                  onChange={(e) => setSystemParams(prev => ({ ...prev, feedFlow: Number(e.target.value) }))}
+                  value={feedWater.Q_demand_net}
+                  onChange={(e) => setFeedWater(prev => ({ ...prev, Q_demand_net: Number(e.target.value) }))}
                   className="w-full p-2 border rounded"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Permeate Flow (m³/hr)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Temperature (°C)</label>
                 <input
                   type="number"
-                  value={systemParams.permeateFlow}
-                  onChange={(e) => {
-                    const permeateFlow = Number(e.target.value);
-                    const recovery = (permeateFlow / systemParams.feedFlow) * 100;
-                    setSystemParams(prev => ({ 
-                      ...prev, 
-                      permeateFlow,
-                      recovery: Number(recovery.toFixed(1))
-                    }));
-                  }}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">System Recovery (%)</label>
-                <input
-                  type="number"
-                  value={systemParams.recovery}
-                  onChange={(e) => {
-                    const recovery = Number(e.target.value);
-                    const permeateFlow = (recovery / 100) * systemParams.feedFlow;
-                    setSystemParams(prev => ({ 
-                      ...prev, 
-                      recovery,
-                      permeateFlow: Number(permeateFlow.toFixed(1))
-                    }));
-                  }}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Feed Temperature (°C)</label>
-                <input
-                  type="number"
-                  value={waterAnalysis.temperature}
-                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, temperature: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Membrane Rejection (%)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={systemParams.membraneRejection}
-                  onChange={(e) => setSystemParams(prev => ({ ...prev, membraneRejection: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Antiscalant Dose (mg/L)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={systemParams.antiscalantDose}
-                  onChange={(e) => setSystemParams(prev => ({ ...prev, antiscalantDose: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Water Analysis */}
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h3 className="text-lg font-semibold text-blue-700 mb-4">Feed Water Analysis</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Calcium (Ca) mg/L</label>
-                <input
-                  type="number"
-                  value={waterAnalysis.ca}
-                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, ca: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Magnesium (Mg) mg/L</label>
-                <input
-                  type="number"
-                  value={waterAnalysis.mg}
-                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, mg: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Sodium (Na) mg/L</label>
-                <input
-                  type="number"
-                  value={waterAnalysis.na}
-                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, na: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Potassium (K) mg/L</label>
-                <input
-                  type="number"
-                  value={waterAnalysis.k}
-                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, k: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Bicarbonate (HCO3) mg/L</label>
-                <input
-                  type="number"
-                  value={waterAnalysis.hco3}
-                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, hco3: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Chloride (Cl) mg/L</label>
-                <input
-                  type="number"
-                  value={waterAnalysis.cl}
-                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, cl: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Sulfate (SO4) mg/L</label>
-                <input
-                  type="number"
-                  value={waterAnalysis.so4}
-                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, so4: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Fluoride (F) mg/L</label>
-                <input
-                  type="number"
-                  value={waterAnalysis.f}
-                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, f: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Silica (SiO2) mg/L</label>
-                <input
-                  type="number"
-                  value={waterAnalysis.sio2}
-                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, sio2: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">TDS mg/L</label>
-                <input
-                  type="number"
-                  value={waterAnalysis.tds}
-                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, tds: Number(e.target.value) }))}
+                  value={feedWater.temperature}
+                  onChange={(e) => setFeedWater(prev => ({ ...prev, temperature: Number(e.target.value) }))}
                   className="w-full p-2 border rounded"
                 />
               </div>
@@ -574,11 +530,266 @@ const scalingSaturation = {
                 <input
                   type="number"
                   step="0.1"
-                  value={waterAnalysis.ph}
-                  onChange={(e) => setWaterAnalysis(prev => ({ ...prev, ph: Number(e.target.value) }))}
+                  value={feedWater.pH}
+                  onChange={(e) => setFeedWater(prev => ({ ...prev, pH: Number(e.target.value) }))}
                   className="w-full p-2 border rounded"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">TDS (mg/L)</label>
+                <input
+                  type="number"
+                  value={feedWater.tds}
+                  onChange={(e) => setFeedWater(prev => ({ ...prev, tds: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">TSS (mg/L)</label>
+                <input
+                  type="number"
+                  value={feedWater.tss}
+                  onChange={(e) => setFeedWater(prev => ({ ...prev, tss: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Turbidity (NTU)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={feedWater.turbidity}
+                  onChange={(e) => setFeedWater(prev => ({ ...prev, turbidity: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">SDI15</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={feedWater.sdi15}
+                  onChange={(e) => setFeedWater(prev => ({ ...prev, sdi15: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">TOC (mg/L)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={feedWater.toc}
+                  onChange={(e) => setFeedWater(prev => ({ ...prev, toc: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Design Criteria */}
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h3 className="text-lg font-semibold text-blue-700 mb-4">Design Criteria</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Target Flux @ 25°C (LMH)</label>
+                <input
+                  type="number"
+                  value={designCriteria.flux25_target}
+                  onChange={(e) => setDesignCriteria(prev => ({ ...prev, flux25_target: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+                <span className="text-xs text-gray-500">Range: 40-110 LMH</span>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Module Type</label>
+                <select
+                  value={designCriteria.module_type}
+                  onChange={(e) => setDesignCriteria(prev => ({ ...prev, module_type: e.target.value }))}
+                  className="w-full p-2 border rounded"
+                >
+                  {Object.keys(moduleDatabase).map(type => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Recovery Target (%)</label>
+                <input
+                  type="number"
+                  value={designCriteria.recovery_target}
+                  onChange={(e) => setDesignCriteria(prev => ({ ...prev, recovery_target: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Online Trains</label>
+                <input
+                  type="number"
+                  value={designCriteria.n_trains_online}
+                  onChange={(e) => setDesignCriteria(prev => ({ ...prev, n_trains_online: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Redundant Trains</label>
+                <input
+                  type="number"
+                  value={designCriteria.n_trains_redundant}
+                  onChange={(e) => setDesignCriteria(prev => ({ ...prev, n_trains_redundant: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Safety Factor</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={designCriteria.safety_factor_area}
+                  onChange={(e) => setDesignCriteria(prev => ({ ...prev, safety_factor_area: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+                <span className="text-xs text-gray-500">Typical: 1.1-1.3</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Backwash Settings */}
+          <div className="bg-yellow-50 p-4 rounded-lg">
+            <h3 className="text-lg font-semibold text-blue-700 mb-4">Backwash Program</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Interval (min)</label>
+                <input
+                  type="number"
+                  value={backwashSettings.interval_min}
+                  onChange={(e) => setBackwashSettings(prev => ({ ...prev, interval_min: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">BW Flux (LMH)</label>
+                <input
+                  type="number"
+                  value={backwashSettings.J_BW}
+                  onChange={(e) => setBackwashSettings(prev => ({ ...prev, J_BW: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+                <span className="text-xs text-gray-500">Range: 100-120 LMH</span>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Air Scour (s)</label>
+                <input
+                  type="number"
+                  value={backwashSettings.t_AS_s}
+                  onChange={(e) => setBackwashSettings(prev => ({ ...prev, t_AS_s: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Gravity Drain (s)</label>
+                <input
+                  type="number"
+                  value={backwashSettings.t_GD_s}
+                  onChange={(e) => setBackwashSettings(prev => ({ ...prev, t_GD_s: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">BW Top (s)</label>
+                <input
+                  type="number"
+                  value={backwashSettings.t_BWTop_s}
+                  onChange={(e) => setBackwashSettings(prev => ({ ...prev, t_BWTop_s: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">BW Bottom (s)</label>
+                <input
+                  type="number"
+                  value={backwashSettings.t_BWBot_s}
+                  onChange={(e) => setBackwashSettings(prev => ({ ...prev, t_BWBot_s: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Forward Flush (s)</label>
+                <input
+                  type="number"
+                  value={backwashSettings.t_FF_s}
+                  onChange={(e) => setBackwashSettings(prev => ({ ...prev, t_FF_s: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* CEB Settings */}
+          <div className="bg-green-50 p-4 rounded-lg">
+            <h3 className="text-lg font-semibold text-blue-700 mb-4">CEB Program</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={cebSettings.enabled}
+                    onChange={(e) => setCebSettings(prev => ({ ...prev, enabled: e.target.checked }))}
+                    className="mr-2"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Enable CEB</span>
+                </label>
+              </div>
+              {cebSettings.enabled && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Frequency (hours)</label>
+                    <input
+                      type="number"
+                      value={cebSettings.frequency_h}
+                      onChange={(e) => setCebSettings(prev => ({ ...prev, frequency_h: Number(e.target.value) }))}
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Soak Time (min)</label>
+                    <input
+                      type="number"
+                      value={cebSettings.soak_min}
+                      onChange={(e) => setCebSettings(prev => ({ ...prev, soak_min: Number(e.target.value) }))}
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Chemical Type</label>
+                    <select
+                      value={cebSettings.chemical_type}
+                      onChange={(e) => setCebSettings(prev => ({ ...prev, chemical_type: e.target.value }))}
+                      className="w-full p-2 border rounded"
+                    >
+                      <option value="NaOCl">Sodium Hypochlorite</option>
+                      <option value="HCl">Hydrochloric Acid</option>
+                      <option value="NaOH">Sodium Hydroxide</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {cebSettings.chemical_type === 'NaOCl' ? 'Concentration (mg/L)' : 'Target pH'}
+                    </label>
+                    <input
+                      type="number"
+                      value={cebSettings.chemical_type === 'NaOCl' ? cebSettings.target_concentration : cebSettings.target_pH}
+                      onChange={(e) => {
+                        if (cebSettings.chemical_type === 'NaOCl') {
+                          setCebSettings(prev => ({ ...prev, target_concentration: Number(e.target.value) }));
+                        } else {
+                          setCebSettings(prev => ({ ...prev, target_pH: Number(e.target.value) }));
+                        }
+                      }}
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -588,7 +799,7 @@ const scalingSaturation = {
               onClick={handleCalculate}
               className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 font-semibold"
             >
-              Calculate Scaling Potential
+              Calculate UF Design
             </button>
             <button
               onClick={exportToExcel}
@@ -604,58 +815,70 @@ const scalingSaturation = {
         <div className="space-y-6">
           {results && (
             <>
-              {/* Key Metrics */}
+              {/* System Overview */}
               <div className="bg-blue-50 p-4 rounded-lg">
-                <h3 className="text-lg font-semibold text-blue-700 mb-4">System Performance</h3>
+                <h3 className="text-lg font-semibold text-blue-700 mb-4">UF System Overview</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-white p-3 rounded">
-                    <div className="text-sm text-gray-600">Concentration Factor</div>
-                    <div className="text-2xl font-bold text-blue-800">{results.concentrationFactor.toFixed(2)}x</div>
+                    <div className="text-sm text-gray-600">Module Type</div>
+                    <div className="text-xl font-bold text-blue-800">{designCriteria.module_type}</div>
                   </div>
                   <div className="bg-white p-3 rounded">
-                    <div className="text-sm text-gray-600">Recovery Rate</div>
-                    <div className="text-2xl font-bold text-blue-800">{systemParams.recovery}%</div>
+                    <div className="text-sm text-gray-600">Total Modules</div>
+                    <div className="text-xl font-bold text-blue-800">{results.total_modules}</div>
                   </div>
                   <div className="bg-white p-3 rounded">
-                    <div className="text-sm text-gray-600">Membrane Rejection</div>
-                    <div className="text-2xl font-bold text-blue-800">{systemParams.membraneRejection}%</div>
+                    <div className="text-sm text-gray-600">Modules per Train</div>
+                    <div className="text-xl font-bold text-blue-800">{results.n_mod_per_train}</div>
                   </div>
                   <div className="bg-white p-3 rounded">
-                    <div className="text-sm text-gray-600">Antiscalant Efficiency</div>
-                    <div className="text-2xl font-bold text-green-600">{results.antiscalantEfficiency.toFixed(1)}%</div>
+                    <div className="text-sm text-gray-600">System Recovery</div>
+                    <div className="text-xl font-bold text-green-600">{designCriteria.recovery_target}%</div>
+                  </div>
+                  <div className="bg-white p-3 rounded">
+                    <div className="text-sm text-gray-600">Operating Flux</div>
+                    <div className="text-xl font-bold text-blue-800">{results.instantaneous_flux.toFixed(1)} LMH</div>
+                  </div>
+                  <div className="bg-white p-3 rounded">
+                    <div className="text-sm text-gray-600">System Availability</div>
+                    <div className="text-xl font-bold text-green-600">{(results.f_avail * 100).toFixed(1)}%</div>
                   </div>
                 </div>
               </div>
 
-              {/* Scaling Potential Chart */}
+              {/* Operating Conditions Chart */}
               <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="text-lg font-semibold text-blue-700 mb-4">Concentrate Solubilities</h3>
+                <h3 className="text-lg font-semibold text-blue-700 mb-4">Operating Conditions</h3>
                 <Bar
                   data={{
-                    labels: ['CaCO₃', 'CaSO₄', 'SiO₂', 'CaF₂'],
+                    labels: ['Filtration', 'Air Scour', 'Gravity Drain', 'BW Top', 'BW Bottom', 'Forward Flush'],
                     datasets: [
                       {
-                        label: 'NO CHEM',
+                        label: 'Duration (seconds)',
                         data: [
-                          results.scalingSaturation.caco3.noChem,
-                          results.scalingSaturation.caso4.noChem,
-                          results.scalingSaturation.sio2.noChem,
-                          results.scalingSaturation.caf2.noChem
+                          backwashSettings.interval_min * 60,
+                          backwashSettings.t_AS_s,
+                          backwashSettings.t_GD_s,
+                          backwashSettings.t_BWTop_s,
+                          backwashSettings.t_BWBot_s,
+                          backwashSettings.t_FF_s
                         ],
-                        backgroundColor: 'rgba(54, 162, 235, 0.8)',
-                        borderColor: 'rgba(54, 162, 235, 1)',
-                        borderWidth: 1,
-                      },
-                      {
-                        label: 'WITH TREATMENT',
-                        data: [
-                          results.scalingSaturation.caco3.withTreatment,
-                          results.scalingSaturation.caso4.withTreatment,
-                          results.scalingSaturation.sio2.withTreatment,
-                          results.scalingSaturation.caf2.withTreatment
+                        backgroundColor: [
+                          'rgba(54, 162, 235, 0.8)',
+                          'rgba(255, 99, 132, 0.8)',
+                          'rgba(255, 206, 86, 0.8)',
+                          'rgba(75, 192, 192, 0.8)',
+                          'rgba(153, 102, 255, 0.8)',
+                          'rgba(255, 159, 64, 0.8)'
                         ],
-                        backgroundColor: 'rgba(75, 192, 192, 0.8)',
-                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderColor: [
+                          'rgba(54, 162, 235, 1)',
+                          'rgba(255, 99, 132, 1)',
+                          'rgba(255, 206, 86, 1)',
+                          'rgba(75, 192, 192, 1)',
+                          'rgba(153, 102, 255, 1)',
+                          'rgba(255, 159, 64, 1)'
+                        ],
                         borderWidth: 1,
                       }
                     ]
@@ -669,7 +892,8 @@ const scalingSaturation = {
                       tooltip: {
                         callbacks: {
                           label: function(context) {
-                            return `${context.dataset.label}: ${context.parsed.y.toFixed(1)}%`;
+                            const minutes = (context.parsed.y / 60).toFixed(1);
+                            return `${context.parsed.y}s (${minutes} min)`;
                           }
                         }
                       }
@@ -679,107 +903,120 @@ const scalingSaturation = {
                         beginAtZero: true,
                         title: {
                           display: true,
-                          text: 'Percent of Saturation'
-                        },
-                        ticks: {
-                          callback: function(value) {
-                            return value + '%';
-                          }
-                        }
-                      },
-                      x: {
-                        title: {
-                          display: true,
-                          text: 'Scale Forming Compound'
+                          text: 'Duration (seconds)'
                         }
                       }
                     }
                   }}
                 />
-                
-                {/* Add red line at 100% like in the original report */}
-                <div className="mt-2 text-xs text-gray-600 text-center">
-                  <span className="inline-block w-8 h-0.5 bg-red-500 mr-2"></span>
-                  100% Saturation Limit
-                </div>
               </div>
 
-              {/* Saturation Table */}
+              {/* Equipment Sizing */}
               <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="text-lg font-semibold text-blue-700 mb-4">Saturation Analysis</h3>
+                <h3 className="text-lg font-semibold text-blue-700 mb-4">Equipment Sizing</h3>
                 <div className="overflow-x-auto">
                   <table className="min-w-full bg-white rounded border text-sm">
                     <thead>
                       <tr className="bg-gray-100">
-                        <th className="px-3 py-2 text-left">Compound</th>
-                        <th className="px-3 py-2 text-center">Feed</th>
-                        <th className="px-3 py-2 text-center">Concentrate</th>
-                        <th className="px-3 py-2 text-center">With Treatment</th>
-                        <th className="px-3 py-2 text-center">Status</th>
+                        <th className="px-3 py-2 text-left">Equipment</th>
+                        <th className="px-3 py-2 text-center">Capacity</th>
+                        <th className="px-3 py-2 text-center">Unit</th>
+                        <th className="px-3 py-2 text-center">Notes</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr className="border-t">
-                        <td className="px-3 py-2 font-medium">CaCO₃</td>
-                        <td className="px-3 py-2 text-center">{(results.scalingSaturation.caco3.noChem / results.concentrationFactor).toFixed(1)}%</td>
-                        <td className="px-3 py-2 text-center">{results.scalingSaturation.caco3.noChem.toFixed(1)}%</td>
-                        <td className="px-3 py-2 text-center">{results.scalingSaturation.caco3.withTreatment.toFixed(1)}%</td>
+                        <td className="px-3 py-2 font-medium">Feed Pump</td>
+                        <td className="px-3 py-2 text-center">{results.feed_pump_flow.toFixed(1)}</td>
+                        <td className="px-3 py-2 text-center">m³/h</td>
+                        <td className="px-3 py-2 text-center">Head: {results.feed_pump_head.toFixed(1)} m</td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">Backwash Pump</td>
+                        <td className="px-3 py-2 text-center">{results.backwash_pump_flow.toFixed(1)}</td>
+                        <td className="px-3 py-2 text-center">m³/h</td>
+                        <td className="px-3 py-2 text-center">Flux: {backwashSettings.J_BW} LMH</td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">CIP Pump</td>
+                        <td className="px-3 py-2 text-center">{results.cip_pump_flow.toFixed(1)}</td>
+                        <td className="px-3 py-2 text-center">m³/h</td>
+                        <td className="px-3 py-2 text-center">Per train</td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">Air Blower</td>
+                        <td className="px-3 py-2 text-center">{results.air_blower_flow.toFixed(0)}</td>
+                        <td className="px-3 py-2 text-center">Nm³/h</td>
+                        <td className="px-3 py-2 text-center">Per train</td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">BW/Filtrate Tank</td>
+                        <td className="px-3 py-2 text-center">{results.V_BW_tank.toFixed(1)}</td>
+                        <td className="px-3 py-2 text-center">m³</td>
+                        <td className="px-3 py-2 text-center">Per train</td>
+                      </tr>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">CIP Tank</td>
+                        <td className="px-3 py-2 text-center">{results.V_CIP_tank.toFixed(1)}</td>
+                        <td className="px-3 py-2 text-center">m³</td>
+                        <td className="px-3 py-2 text-center">Per train</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Water Quality Predictions */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="text-lg font-semibold text-blue-700 mb-4">Water Quality Predictions</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full bg-white rounded border text-sm">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="px-3 py-2 text-left">Parameter</th>
+                        <th className="px-3 py-2 text-center">Feed</th>
+                        <th className="px-3 py-2 text-center">Expected Product</th>
+                        <th className="px-3 py-2 text-center">Removal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 font-medium">Turbidity (NTU)</td>
+                        <td className="px-3 py-2 text-center">{feedWater.turbidity}</td>
+                        <td className="px-3 py-2 text-center">{results.expected_turbidity.toFixed(2)}</td>
                         <td className="px-3 py-2 text-center">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            results.scalingSaturation.caco3.withTreatment > 100 ? 'bg-red-100 text-red-800' :
-                            results.scalingSaturation.caco3.withTreatment > 80 ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-green-100 text-green-800'
-                          }`}>
-                            {results.scalingSaturation.caco3.withTreatment > 100 ? 'HIGH RISK' :
-                             results.scalingSaturation.caco3.withTreatment > 80 ? 'MODERATE' : 'LOW RISK'}
+                          <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
+                            >99%
                           </span>
                         </td>
                       </tr>
                       <tr className="border-t">
-                        <td className="px-3 py-2 font-medium">CaSO₄</td>
-                        <td className="px-3 py-2 text-center">{(results.scalingSaturation.caso4.noChem / results.concentrationFactor).toFixed(1)}%</td>
-                        <td className="px-3 py-2 text-center">{results.scalingSaturation.caso4.noChem.toFixed(1)}%</td>
-                        <td className="px-3 py-2 text-center">{results.scalingSaturation.caso4.withTreatment.toFixed(1)}%</td>
+                        <td className="px-3 py-2 font-medium">SDI15</td>
+                        <td className="px-3 py-2 text-center">{feedWater.sdi15}</td>
+                        <td className="px-3 py-2 text-center">{results.expected_sdi.toFixed(1)}</td>
                         <td className="px-3 py-2 text-center">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            results.scalingSaturation.caso4.withTreatment > 100 ? 'bg-red-100 text-red-800' :
-                            results.scalingSaturation.caso4.withTreatment > 80 ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-green-100 text-green-800'
-                          }`}>
-                            {results.scalingSaturation.caso4.withTreatment > 100 ? 'HIGH RISK' :
-                             results.scalingSaturation.caso4.withTreatment > 80 ? 'MODERATE' : 'LOW RISK'}
+                          <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
+                            Improved
                           </span>
                         </td>
                       </tr>
                       <tr className="border-t">
-                        <td className="px-3 py-2 font-medium">SiO₂</td>
-                        <td className="px-3 py-2 text-center">{(results.scalingSaturation.sio2.noChem / results.concentrationFactor).toFixed(1)}%</td>
-                        <td className="px-3 py-2 text-center">{results.scalingSaturation.sio2.noChem.toFixed(1)}%</td>
-                        <td className="px-3 py-2 text-center">{results.scalingSaturation.sio2.withTreatment.toFixed(1)}%</td>
+                        <td className="px-3 py-2 font-medium">TOC (mg/L)</td>
+                        <td className="px-3 py-2 text-center">{feedWater.toc}</td>
+                        <td className="px-3 py-2 text-center">{(feedWater.toc - results.expected_toc_removal).toFixed(1)}</td>
                         <td className="px-3 py-2 text-center">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            results.scalingSaturation.sio2.withTreatment > 100 ? 'bg-red-100 text-red-800' :
-                            results.scalingSaturation.sio2.withTreatment > 80 ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-green-100 text-green-800'
-                          }`}>
-                            {results.scalingSaturation.sio2.withTreatment > 100 ? 'HIGH RISK' :
-                             results.scalingSaturation.sio2.withTreatment > 80 ? 'MODERATE' : 'LOW RISK'}
+                          <span className="px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                            {((results.expected_toc_removal / feedWater.toc) * 100).toFixed(0)}%
                           </span>
                         </td>
                       </tr>
                       <tr className="border-t">
-                        <td className="px-3 py-2 font-medium">CaF₂</td>
-                        <td className="px-3 py-2 text-center">{(results.scalingSaturation.caf2.noChem / results.concentrationFactor).toFixed(1)}%</td>
-                        <td className="px-3 py-2 text-center">{results.scalingSaturation.caf2.noChem.toFixed(1)}%</td>
-                        <td className="px-3 py-2 text-center">{results.scalingSaturation.caf2.withTreatment.toFixed(1)}%</td>
+                        <td className="px-3 py-2 font-medium">TSS (mg/L)</td>
+                        <td className="px-3 py-2 text-center">{feedWater.tss}</td>
+                        <td className="px-3 py-2 text-center">{"<0.1"}</td>
                         <td className="px-3 py-2 text-center">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            results.scalingSaturation.caf2.withTreatment > 100 ? 'bg-red-100 text-red-800' :
-                            results.scalingSaturation.caf2.withTreatment > 80 ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-green-100 text-green-800'
-                          }`}>
-                            {results.scalingSaturation.caf2.withTreatment > 100 ? 'HIGH RISK' :
-                             results.scalingSaturation.caf2.withTreatment > 80 ? 'MODERATE' : 'LOW RISK'}
+                          <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
+                            >99%
                           </span>
                         </td>
                       </tr>
@@ -788,163 +1025,85 @@ const scalingSaturation = {
                 </div>
               </div>
 
-              {/* Water Analysis Results */}
+              {/* Utility Consumption */}
               <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="text-lg font-semibold text-blue-700 mb-4">Water Analysis Results</h3>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full bg-white rounded border text-sm">
-                    <thead>
-                      <tr className="bg-gray-100">
-                        <th className="px-3 py-2 text-left">Ions (mg/L)</th>
-                        <th className="px-3 py-2 text-center">Feed</th>
-                        <th className="px-3 py-2 text-center">Permeate</th>
-                        <th className="px-3 py-2 text-center">Concentrate</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="border-t">
-                        <td className="px-3 py-2 font-medium">Ca</td>
-                        <td className="px-3 py-2 text-center">{results.feedComposition.ca.toFixed(0)}</td>
-                        <td className="px-3 py-2 text-center">{results.permeateComposition.ca.toFixed(2)}</td>
-                        <td className="px-3 py-2 text-center">{results.concentrateComposition.ca.toFixed(0)}</td>
-                      </tr>
-                      <tr className="border-t">
-                        <td className="px-3 py-2 font-medium">Mg</td>
-                        <td className="px-3 py-2 text-center">{results.feedComposition.mg.toFixed(0)}</td>
-                        <td className="px-3 py-2 text-center">{results.permeateComposition.mg.toFixed(2)}</td>
-                        <td className="px-3 py-2 text-center">{results.concentrateComposition.mg.toFixed(0)}</td>
-                      </tr>
-                      <tr className="border-t">
-                        <td className="px-3 py-2 font-medium">Na</td>
-                        <td className="px-3 py-2 text-center">{results.feedComposition.na.toFixed(0)}</td>
-                        <td className="px-3 py-2 text-center">{results.permeateComposition.na.toFixed(0)}</td>
-                        <td className="px-3 py-2 text-center">{results.concentrateComposition.na.toFixed(0)}</td>
-                      </tr>
-                      <tr className="border-t">
-                        <td className="px-3 py-2 font-medium">K</td>
-                        <td className="px-3 py-2 text-center">{results.feedComposition.k.toFixed(0)}</td>
-                        <td className="px-3 py-2 text-center">{results.permeateComposition.k.toFixed(2)}</td>
-                        <td className="px-3 py-2 text-center">{results.concentrateComposition.k.toFixed(0)}</td>
-                      </tr>
-                      <tr className="border-t">
-                        <td className="px-3 py-2 font-medium">HCO₃</td>
-                        <td className="px-3 py-2 text-center">{results.feedComposition.hco3.toFixed(0)}</td>
-                        <td className="px-3 py-2 text-center">{results.permeateComposition.hco3.toFixed(2)}</td>
-                        <td className="px-3 py-2 text-center">{results.concentrateComposition.hco3.toFixed(0)}</td>
-                      </tr>
-                      <tr className="border-t">
-                        <td className="px-3 py-2 font-medium">Cl</td>
-                        <td className="px-3 py-2 text-center">{results.feedComposition.cl.toFixed(0)}</td>
-                        <td className="px-3 py-2 text-center">{results.permeateComposition.cl.toFixed(0)}</td>
-                        <td className="px-3 py-2 text-center">{results.concentrateComposition.cl.toFixed(0)}</td>
-                      </tr>
-                      <tr className="border-t">
-                        <td className="px-3 py-2 font-medium">SO₄</td>
-                        <td className="px-3 py-2 text-center">{results.feedComposition.so4.toFixed(0)}</td>
-                        <td className="px-3 py-2 text-center">{results.permeateComposition.so4.toFixed(0)}</td>
-                        <td className="px-3 py-2 text-center">{results.concentrateComposition.so4.toFixed(0)}</td>
-                      </tr>
-                      <tr className="border-t">
-                        <td className="px-3 py-2 font-medium">F</td>
-                        <td className="px-3 py-2 text-center">{results.feedComposition.f.toFixed(2)}</td>
-                        <td className="px-3 py-2 text-center">{results.permeateComposition.f.toFixed(3)}</td>
-                        <td className="px-3 py-2 text-center">{results.concentrateComposition.f.toFixed(2)}</td>
-                      </tr>
-                      <tr className="border-t">
-                        <td className="px-3 py-2 font-medium">SiO₂</td>
-                        <td className="px-3 py-2 text-center">{results.feedComposition.sio2.toFixed(2)}</td>
-                        <td className="px-3 py-2 text-center">{results.permeateComposition.sio2.toFixed(3)}</td>
-                        <td className="px-3 py-2 text-center">{results.concentrateComposition.sio2.toFixed(2)}</td>
-                      </tr>
-                      <tr className="border-t">
-                        <td className="px-3 py-2 font-medium">TDS</td>
-                        <td className="px-3 py-2 text-center">{results.feedComposition.tds.toFixed(0)}</td>
-                        <td className="px-3 py-2 text-center">{results.permeateComposition.tds.toFixed(0)}</td>
-                        <td className="px-3 py-2 text-center">{results.concentrateComposition.tds.toFixed(0)}</td>
-                      </tr>
-                      <tr className="border-t">
-                        <td className="px-3 py-2 font-medium">pH</td>
-                        <td className="px-3 py-2 text-center">{results.feedComposition.ph.toFixed(2)}</td>
-                        <td className="px-3 py-2 text-center">{results.permeateComposition.ph.toFixed(2)}</td>
-                        <td className="px-3 py-2 text-center">{results.concentrateComposition.ph.toFixed(2)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
+                <h3 className="text-lg font-semibold text-blue-700 mb-4">Utility Consumption</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-white p-3 rounded">
+                    <div className="text-sm text-gray-600">Backwash Water</div>
+                    <div className="text-xl font-bold text-blue-800">{results.bw_water_consumption.toFixed(1)} m³/h</div>
+                  </div>
+                  <div className="bg-white p-3 rounded">
+                    <div className="text-sm text-gray-600">CEB Chemical</div>
+                    <div className="text-xl font-bold text-blue-800">{results.ceb_chemical_consumption.toFixed(2)} kg/event</div>
+                  </div>
+                  <div className="bg-white p-3 rounded">
+                    <div className="text-sm text-gray-600">Air for Scour</div>
+                    <div className="text-xl font-bold text-blue-800">{results.air_blower_flow.toFixed(0)} Nm³/h</div>
+                  </div>
+                  <div className="bg-white p-3 rounded">
+                    <div className="text-sm text-gray-600">Daily BW Consumption</div>
+                    <div className="text-xl font-bold text-blue-800">{(results.bw_water_consumption * 24).toFixed(0)} m³/day</div>
+                  </div>
                 </div>
               </div>
 
-              {/* Recommendations */}
-              <div className="bg-white border-l-4 border-blue-500 p-4 rounded">
-                <h3 className="text-lg font-semibold text-blue-700 mb-3">System Recommendations</h3>
-                <div className="space-y-2 text-sm">
-                  {results.scalingSaturation.caco3.withTreatment > 100 && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded">
-                      <strong className="text-red-800">⚠️ CaCO₃ Scaling Risk:</strong>
-                      <p className="text-red-700">High calcium carbonate scaling potential ({results.scalingSaturation.caco3.withTreatment.toFixed(1)}%). Consider increasing antiscalant dose or reducing recovery rate.</p>
-                    </div>
-                  )}
-                  
-                  {results.scalingSaturation.caso4.withTreatment > 100 && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded">
-                      <strong className="text-red-800">⚠️ CaSO₄ Scaling Risk:</strong>
-                      <p className="text-red-700">High calcium sulfate scaling potential ({results.scalingSaturation.caso4.withTreatment.toFixed(1)}%). Consider reducing recovery or increasing antiscalant dose.</p>
-                    </div>
-                  )}
+              {/* Warnings and Recommendations */}
+              {(results.warnings.length > 0 || results.errors.length > 0) && (
+                <div className="bg-white border-l-4 border-yellow-500 p-4 rounded">
+                  <h3 className="text-lg font-semibold text-yellow-700 mb-3">System Recommendations</h3>
+                  <div className="space-y-2 text-sm">
+                    {results.errors.map((error, index) => (
+                      <div key={`error-${index}`} className="p-3 bg-red-50 border border-red-200 rounded">
+                        <strong className="text-red-800">❌ Error:</strong>
+                        <p className="text-red-700">{error}</p>
+                      </div>
+                    ))}
+                    
+                    {results.warnings.map((warning, index) => (
+                      <div key={`warning-${index}`} className="p-3 bg-yellow-50 border border-yellow-200 rounded">
+                        <strong className="text-yellow-800">⚠️ Warning:</strong>
+                        <p className="text-yellow-700">{warning}</p>
+                      </div>
+                    ))}
 
-                  {results.scalingSaturation.sio2.withTreatment > 100 && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded">
-                      <strong className="text-red-800">⚠️ SiO₂ Scaling Risk:</strong>
-                      <p className="text-red-700">High silica scaling potential ({results.scalingSaturation.sio2.withTreatment.toFixed(1)}%). Consider reducing recovery rate or adding dispersant.</p>
-                    </div>
-                  )}
+                    {/* Positive recommendations */}
+                    {results.warnings.length === 0 && results.errors.length === 0 && (
+                      <div className="p-3 bg-green-50 border border-green-200 rounded">
+                        <strong className="text-green-800">✅ System Design Validated:</strong>
+                        <p className="text-green-700">All parameters are within acceptable design limits. The UF system configuration is suitable for the given feed water conditions.</p>
+                      </div>
+                    )}
 
-                  {systemParams.recovery > 85 && (
-                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded">
-                      <strong className="text-yellow-800">⚠️ High Recovery Rate:</strong>
-                      <p className="text-yellow-700">Recovery rate of {systemParams.recovery}% is high. Monitor scaling indices closely and consider frequent cleaning cycles.</p>
-                    </div>
-                  )}
+                    {results.f_avail > 0.95 && (
+                      <div className="p-3 bg-green-50 border border-green-200 rounded">
+                        <strong className="text-green-800">✅ High Availability:</strong>
+                        <p className="text-green-700">System availability of {(results.f_avail * 100).toFixed(1)}% indicates efficient operation with minimal downtime.</p>
+                      </div>
+                    )}
 
-                  {systemParams.antiscalantDose < 1.5 && (
-                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded">
-                      <strong className="text-yellow-800">⚠️ Low Antiscalant Dose:</strong>
-                      <p className="text-yellow-700">Antiscalant dose of {systemParams.antiscalantDose} mg/L may be insufficient for high scaling conditions. Consider increasing to 2-3 mg/L.</p>
-                    </div>
-                  )}
-
-                  {/* Positive recommendations */}
-                  {results.scalingSaturation.caco3.withTreatment < 80 && 
-                   results.scalingSaturation.caso4.withTreatment < 80 && 
-                   results.scalingSaturation.sio2.withTreatment < 80 && (
-                    <div className="p-3 bg-green-50 border border-green-200 rounded">
-                      <strong className="text-green-800">✅ Low Scaling Risk:</strong>
-                      <p className="text-green-700">All scaling indices are within acceptable limits. Current operating conditions and antiscalant dose are suitable.</p>
-                    </div>
-                  )}
-
-                  {results.concentrationFactor < 5 && (
-                    <div className="p-3 bg-green-50 border border-green-200 rounded">
-                      <strong className="text-green-800">✅ Conservative Operation:</strong>
-                      <p className="text-green-700">Concentration factor of {results.concentrationFactor.toFixed(2)}x indicates conservative operation with good margin for scaling control.</p>
-                    </div>
-                  )}
+                    {designCriteria.flux25_target >= 40 && designCriteria.flux25_target <= 110 && (
+                      <div className="p-3 bg-green-50 border border-green-200 rounded">
+                        <strong className="text-green-800">✅ Optimal Flux:</strong>
+                        <p className="text-green-700">Operating flux of {results.instantaneous_flux.toFixed(1)} LMH is within the recommended range for stable operation.</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </>
           )}
 
           {!results && (
             <div className="bg-gray-50 p-8 rounded-lg text-center">
               <div className="text-gray-500 text-lg mb-2">No Results Yet</div>
-              <p className="text-gray-400">Enter your system parameters and water analysis data, then click "Calculate Scaling Potential" to see the assessment results.</p>
+              <p className="text-gray-400">Enter your feed water parameters and design criteria, then click "Calculate UF Design" to see the system specifications.</p>
             </div>
           )}
         </div>
       </div>
-
-      {/* Help Section */}
     </div>
   );
 };
 
-export default ROScalingAssessment;
+export default UFDesignSoftware;
