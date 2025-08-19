@@ -71,13 +71,13 @@ const UFMonitoringSystem = () => {
 
   const [results, setResults] = useState<ResultData[]>([]);
   const [chartParams, setChartParams] = useState<ChartParameters>({
-    flux: true,
+    flux: false,
     tmp: true,
     tcsf: true,
     differentialPressure: false,
     instantaneousRecovery: false,
     normalizedTMP: false,
-    normalizedFlux: false,
+    normalizedFlux: true,
     normalizedTCSF: false,
     feedTurbidity: false,
     filtrateTurbidity: false
@@ -86,30 +86,22 @@ const UFMonitoringSystem = () => {
   // Membrane area (ft²) - this would typically be input or selected based on module type
   const [membraneArea, setMembraneArea] = useState<number>(1000);
 
-  // UF specific calculations based on HYDRAcap documentation
+  // UF specific calculations
   const calculateUFPerformance = (data: OperatingData, index: number): ResultData => {
     
     // 1. Flux calculation: J = (1440 × Q) / A_m [gfd]
-    // where Q = filtrate flow [gpm], A_m = effective membrane area [ft²]
     const flux = (1440 * data.filtrateFlow) / membraneArea;
 
     // 2. Trans Membrane Pressure (TMP) calculation:
-    // TMP = ((P_bottom + P_top) / 2) - P_filt [psi]
     const tmp = ((data.bottomPressure + data.topPressure) / 2) - data.filtratePressure;
 
     // 3. Temperature Compensated Specific Flux (TCSF):
-    // TCSF = (J / TMP) × e^(-0.015 × (T - 20)) [gfd/psi]
-    // where T = water temperature [°C]
     const tcsf = tmp > 0 ? (flux / tmp) * Math.exp(-0.015 * (data.temperature - 20)) : 0;
 
     // 4. Differential pressure (ΔP):
-    // ΔP = P_bottom - P_top [psi]
     const differentialPressure = data.bottomPressure - data.topPressure;
 
     // 5. Instantaneous Recovery:
-    // R = [1 - (V_BW / (V_FiltrateGross + V_Bleed + V_FF))] × 100 [%]
-    // Simplified version: R = [1 - (V_BW / V_FiltrateGross)] × 100
-    // For instantaneous calculation during normal operation:
     const totalFeedFlow = data.filtrateFlow + data.bleedFlow + data.recycleFlow;
     const instantaneousRecovery = totalFeedFlow > 0 ? (data.filtrateFlow / totalFeedFlow) * 100 : 0;
 
@@ -212,7 +204,7 @@ const UFMonitoringSystem = () => {
 
   const exportData = () => {
     const csvData = [
-      ["HYDRAcap UF Monitoring Data Export"],
+      ["UF Performance Monitoring Data Export"],
       [""],
       ["Input Data"],
       ["Date", "Time", "Hour Meter", "Temperature (°C)", "Screen Filter Press. In (psi)", 
@@ -241,14 +233,14 @@ const UFMonitoringSystem = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "HYDRAcap_UF_Monitoring_Data.csv";
+    link.download = "UF_Performance_Monitoring_Data.csv";
     link.click();
     URL.revokeObjectURL(url);
   };
 
   const downloadTemplate = () => {
     const templateData = [
-      ["HYDRAcap UF Monitoring Template"],
+      ["UF Performance Monitoring Template"],
       [""],
       ["Date", "Time", "Hour Meter", "Temperature (°C)", "Screen Filter Press. In (psi)", 
        "Screen Filter Press. Out (psi)", "Bottom Pressure (psi)", "Top Pressure (psi)", 
@@ -262,9 +254,164 @@ const UFMonitoringSystem = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "HYDRAcap_UF_Template.csv";
+    link.download = "UF_Monitoring_Template.csv";
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  // Simple SVG Chart Component
+  const SimpleChart = ({ data, selectedParams }: { data: ResultData[], selectedParams: ChartParameters }) => {
+    if (data.length === 0) return <div className="text-gray-500">No data to display</div>;
+
+    const chartWidth = 800;
+    const chartHeight = 400;
+    const padding = { top: 20, right: 60, bottom: 40, left: 60 };
+    const plotWidth = chartWidth - padding.left - padding.right;
+    const plotHeight = chartHeight - padding.top - padding.bottom;
+
+    // Get active parameters
+    const activeParams = Object.entries(selectedParams)
+      .filter(([key, value]) => value)
+      .map(([key]) => key as keyof ChartParameters);
+
+    if (activeParams.length === 0) {
+      return <div className="text-gray-500">Select parameters to display trends</div>;
+    }
+
+    // Create data points for each active parameter
+    const chartData = activeParams.map((param, paramIndex) => {
+      const values = data.map((d, index) => {
+        let value = 0;
+        switch (param) {
+          case 'flux': value = d.flux; break;
+          case 'tmp': value = d.tmp; break;
+          case 'tcsf': value = d.tcsf; break;
+          case 'differentialPressure': value = d.differentialPressure; break;
+          case 'instantaneousRecovery': value = d.instantaneousRecovery; break;
+          case 'normalizedTMP': value = d.normalizedTMP; break;
+          case 'normalizedFlux': value = d.normalizedFlux; break;
+          case 'normalizedTCSF': value = d.normalizedTCSF; break;
+          case 'feedTurbidity': value = inputData[index]?.feedTurbidity || 0; break;
+          case 'filtrateTurbidity': value = inputData[index]?.filtrateTurbidity || 0; break;
+        }
+        return { x: index, y: value, day: d.days };
+      });
+
+      const minY = Math.min(...values.map(v => v.y));
+      const maxY = Math.max(...values.map(v => v.y));
+      const yRange = maxY - minY || 1;
+
+      const points = values.map(point => ({
+        x: padding.left + (point.x / (data.length - 1 || 1)) * plotWidth,
+        y: padding.top + plotHeight - ((point.y - minY) / yRange) * plotHeight,
+        day: point.day,
+        value: point.y
+      }));
+
+      const colors = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6', '#6366F1', '#F97316', '#84CC16'];
+      
+      return {
+        param,
+        points,
+        color: colors[paramIndex % colors.length],
+        minY,
+        maxY
+      };
+    });
+
+    return (
+      <div className="bg-white p-4 border rounded-lg">
+        <h4 className="font-semibold text-gray-700 mb-3">Performance Trends Over Time</h4>
+        <svg width={chartWidth} height={chartHeight} className="border">
+          {/* Grid lines */}
+          {[0, 0.25, 0.5, 0.75, 1].map(ratio => (
+            <g key={ratio}>
+              <line
+                x1={padding.left}
+                y1={padding.top + ratio * plotHeight}
+                x2={padding.left + plotWidth}
+                y2={padding.top + ratio * plotHeight}
+                stroke="#E5E7EB"
+                strokeWidth="1"
+              />
+              <line
+                x1={padding.left + ratio * plotWidth}
+                y1={padding.top}
+                x2={padding.left + ratio * plotWidth}
+                y2={padding.top + plotHeight}
+                stroke="#E5E7EB"
+                strokeWidth="1"
+              />
+            </g>
+          ))}
+
+          {/* Data lines */}
+          {chartData.map((series, seriesIndex) => (
+            <g key={series.param}>
+              <polyline
+                fill="none"
+                stroke={series.color}
+                strokeWidth="2"
+                points={series.points.map(p => `${p.x},${p.y}`).join(' ')}
+              />
+              {/* Data points */}
+              {series.points.map((point, pointIndex) => (
+                <circle
+                  key={pointIndex}
+                  cx={point.x}
+                  cy={point.y}
+                  r="4"
+                  fill={series.color}
+                >
+                  <title>{`Day ${point.day}: ${point.value.toFixed(2)}`}</title>
+                </circle>
+              ))}
+            </g>
+          ))}
+
+          {/* Axes */}
+          <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + plotHeight} stroke="#374151" strokeWidth="2"/>
+          <line x1={padding.left} y1={padding.top + plotHeight} x2={padding.left + plotWidth} y2={padding.top + plotHeight} stroke="#374151" strokeWidth="2"/>
+
+          {/* X-axis labels */}
+          {data.map((d, index) => (
+            index % Math.ceil(data.length / 8) === 0 && (
+              <text
+                key={index}
+                x={padding.left + (index / (data.length - 1 || 1)) * plotWidth}
+                y={padding.top + plotHeight + 20}
+                textAnchor="middle"
+                fontSize="12"
+                fill="#6B7280"
+              >
+                Day {d.days}
+              </text>
+            )
+          ))}
+
+          {/* Legend */}
+          {chartData.map((series, index) => (
+            <g key={series.param}>
+              <rect
+                x={padding.left + plotWidth + 10}
+                y={padding.top + index * 20}
+                width="12"
+                height="12"
+                fill={series.color}
+              />
+              <text
+                x={padding.left + plotWidth + 25}
+                y={padding.top + index * 20 + 9}
+                fontSize="12"
+                fill="#374151"
+              >
+                {series.param}
+              </text>
+            </g>
+          ))}
+        </svg>
+      </div>
+    );
   };
 
   useEffect(() => {
@@ -275,7 +422,10 @@ const UFMonitoringSystem = () => {
     <div className="bg-white p-6 rounded-lg shadow-lg max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">HYDRAcap® UF Data Logging & Performance Analysis</h2>
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800">UF Performance Monitoring & Predictive Maintenance</h2>
+          <p className="text-gray-600 mt-2">Monitor membrane health • Optimize cleaning schedules • Prevent costly failures</p>
+        </div>
         <div className="flex space-x-2">
           <button
             onClick={importExcel}
@@ -317,7 +467,7 @@ const UFMonitoringSystem = () => {
 
       {/* Input Parameters Table */}
       <div className="mb-6">
-        <h3 className="text-xl font-bold text-gray-800 mb-4">Data Logging Sheet</h3>
+        <h3 className="text-xl font-bold text-gray-800 mb-4">Operating Data Collection</h3>
         <div className="overflow-x-auto">
           <table className="min-w-full bg-white border border-gray-200 text-xs">
             <thead>
@@ -495,20 +645,28 @@ const UFMonitoringSystem = () => {
         </div>
 
         {/* Instructions */}
-        <div className="mt-4 p-4 bg-yellow-50 rounded-lg">
-          <h4 className="font-semibold text-yellow-800 mb-2">Data Logging Instructions:</h4>
-          <ul className="text-sm text-yellow-700 space-y-1">
-            <li>• <strong>Frequency:</strong> Log data at least once per day (minimum), preferably once per operator shift</li>
-            <li>• <strong>Timing:</strong> Include data logged 2 minutes prior to backwash and 2 minutes after backwash</li>
-            <li>• <strong>Critical Parameters:</strong> Monitor Recovery, ΔP, TCSF and TMP for complete performance assessment</li>
-            <li>• <strong>Alerts:</strong> TMP should never exceed 20 psi, TCSF should never decrease below 7 gfd/psi</li>
-          </ul>
+        <div className="mt-4 p-4 bg-green-50 rounded-lg">
+          <h4 className="font-semibold text-green-800 mb-2">🎯 Data Collection Goals:</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-green-700">
+            <div>
+              <h5 className="font-semibold mb-1">Prevent Membrane Damage:</h5>
+              <p>Track TMP to avoid exceeding 20 psi damage threshold</p>
+            </div>
+            <div>
+              <h5 className="font-semibold mb-1">Optimize Cleaning Schedule:</h5>
+              <p>Monitor TCSF decline to clean at optimal timing</p>
+            </div>
+            <div>
+              <h5 className="font-semibold mb-1">Extend Membrane Life:</h5>
+              <p>Identify fouling trends before performance degrades</p>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Results Table */}
       <div className="mb-6">
-        <h3 className="text-xl font-bold text-gray-800 mb-4">Performance Analysis Results</h3>
+        <h3 className="text-xl font-bold text-gray-800 mb-4">Membrane Health Assessment</h3>
         <div className="overflow-x-auto">
           <table className="min-w-full bg-white border border-gray-200">
             <thead>
@@ -522,7 +680,7 @@ const UFMonitoringSystem = () => {
                 <th className="px-3 py-2 text-center text-sm font-medium text-gray-700 border">Recovery<br/>(%)</th>
                 <th className="px-3 py-2 text-center text-sm font-medium text-gray-700 border">Normalized<br/>TMP (psi)</th>
                 <th className="px-3 py-2 text-center text-sm font-medium text-gray-700 border">Normalized<br/>Flux (gfd)</th>
-                <th className="px-3 py-2 text-center text-sm font-medium text-gray-700 border">Status</th>
+                <th className="px-3 py-2 text-center text-sm font-medium text-gray-700 border">Membrane<br/>Status</th>
               </tr>
             </thead>
             <tbody>
@@ -532,12 +690,12 @@ const UFMonitoringSystem = () => {
                   <td className="px-3 py-2 border text-sm text-center">{result.days}</td>
                   <td className="px-3 py-2 border text-sm text-center">{result.flux.toFixed(1)}</td>
                   <td className="px-3 py-2 border text-sm text-center">
-                    <span className={result.tmp > 20 ? 'text-red-600 font-bold' : ''}>
+                    <span className={result.tmp > 20 ? 'text-red-600 font-bold' : result.tmp > 15 ? 'text-yellow-600 font-bold' : ''}>
                       {result.tmp.toFixed(2)}
                     </span>
                   </td>
                   <td className="px-3 py-2 border text-sm text-center">
-                    <span className={result.tcsf < 7 ? 'text-red-600 font-bold' : ''}>
+                    <span className={result.tcsf < 7 ? 'text-red-600 font-bold' : result.tcsf < 10 ? 'text-yellow-600 font-bold' : ''}>
                       {result.tcsf.toFixed(2)}
                     </span>
                   </td>
@@ -547,9 +705,11 @@ const UFMonitoringSystem = () => {
                   <td className="px-3 py-2 border text-sm text-center">{result.normalizedFlux.toFixed(1)}</td>
                   <td className="px-3 py-2 border text-sm text-center">
                     {result.tmp > 20 || result.tcsf < 7 ? (
-                      <span className="text-red-600 font-bold">⚠️ Alert</span>
+                      <span className="text-red-600 font-bold">🚨 Clean Now</span>
+                    ) : result.tmp > 15 || result.tcsf < 10 ? (
+                      <span className="text-yellow-600 font-bold">⚠️ Plan Cleaning</span>
                     ) : (
-                      <span className="text-green-600">✓ Normal</span>
+                      <span className="text-green-600">✅ Healthy</span>
                     )}
                   </td>
                 </tr>
@@ -559,24 +719,15 @@ const UFMonitoringSystem = () => {
         </div>
       </div>
 
-      {/* Performance Trends */}
+      {/* Performance Trends with SVG Chart */}
       <div className="mb-6">
-        <h3 className="text-xl font-bold text-gray-800 mb-4">Performance Trends</h3>
+        <h3 className="text-xl font-bold text-gray-800 mb-4">Performance Trends & Predictive Analytics</h3>
         
         {/* Chart Parameter Selection */}
         <div className="mb-4">
-          <h4 className="text-lg font-semibold text-gray-700 mb-3">Select Parameters to Display:</h4>
+          <h4 className="text-lg font-semibold text-gray-700 mb-3">Select Key Performance Indicators to Track:</h4>
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={chartParams.flux}
-                  onChange={() => toggleChartParam('flux')}
-                  className="mr-2"
-                />
-                <span className="text-sm">Flux (gfd)</span>
-              </label>
               <label className="flex items-center">
                 <input
                   type="checkbox"
@@ -584,7 +735,7 @@ const UFMonitoringSystem = () => {
                   onChange={() => toggleChartParam('tmp')}
                   className="mr-2"
                 />
-                <span className="text-sm">TMP (psi)</span>
+                <span className="text-sm font-medium">🔴 TMP (Pressure Health)</span>
               </label>
               <label className="flex items-center">
                 <input
@@ -593,16 +744,16 @@ const UFMonitoringSystem = () => {
                   onChange={() => toggleChartParam('tcsf')}
                   className="mr-2"
                 />
-                <span className="text-sm">TCSF (gfd/psi)</span>
+                <span className="text-sm font-medium">🔵 TCSF (Membrane Permeability)</span>
               </label>
               <label className="flex items-center">
                 <input
                   type="checkbox"
-                  checked={chartParams.feedTurbidity}
-                  onChange={() => toggleChartParam('feedTurbidity')}
+                  checked={chartParams.normalizedFlux}
+                  onChange={() => toggleChartParam('normalizedFlux')}
                   className="mr-2"
                 />
-                <span className="text-sm">Feed Turbidity (NTU)</span>
+                <span className="text-sm font-medium">🟢 Normalized Flux</span>
               </label>
             </div>
             <div className="space-y-2">
@@ -613,7 +764,7 @@ const UFMonitoringSystem = () => {
                   onChange={() => toggleChartParam('differentialPressure')}
                   className="mr-2"
                 />
-                <span className="text-sm">Differential Pressure (psi)</span>
+                <span className="text-sm">Differential Pressure (Fiber Health)</span>
               </label>
               <label className="flex items-center">
                 <input
@@ -627,11 +778,22 @@ const UFMonitoringSystem = () => {
               <label className="flex items-center">
                 <input
                   type="checkbox"
-                  checked={chartParams.normalizedTMP}
-                  onChange={() => toggleChartParam('normalizedTMP')}
+                  checked={chartParams.flux}
+                  onChange={() => toggleChartParam('flux')}
                   className="mr-2"
                 />
-                <span className="text-sm">Normalized TMP (psi)</span>
+                <span className="text-sm">Raw Flux (gfd)</span>
+              </label>
+            </div>
+            <div className="space-y-2">
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={chartParams.feedTurbidity}
+                  onChange={() => toggleChartParam('feedTurbidity')}
+                  className="mr-2"
+                />
+                <span className="text-sm">Feed Water Quality (Turbidity)</span>
               </label>
               <label className="flex items-center">
                 <input
@@ -640,150 +802,140 @@ const UFMonitoringSystem = () => {
                   onChange={() => toggleChartParam('filtrateTurbidity')}
                   className="mr-2"
                 />
-                <span className="text-sm">Filtrate Turbidity (NTU)</span>
-              </label>
-            </div>
-            <div className="space-y-2">
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={chartParams.normalizedFlux}
-                  onChange={() => toggleChartParam('normalizedFlux')}
-                  className="mr-2"
-                />
-                <span className="text-sm">Normalized Flux (gfd)</span>
-              </label>
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={chartParams.normalizedTCSF}
-                  onChange={() => toggleChartParam('normalizedTCSF')}
-                  className="mr-2"
-                />
-                <span className="text-sm">Normalized TCSF (gfd/psi)</span>
+                <span className="text-sm">Product Water Quality</span>
               </label>
             </div>
           </div>
         </div>
 
-        {/* Trend Data Table */}
-        <div className="bg-white p-4 border rounded-lg">
-          <h4 className="font-semibold text-gray-700 mb-3">Selected Parameters Trend:</h4>
-          <div className="overflow-x-auto">
-            <table className="min-w-full border">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 border">Date</th>
-                  <th className="px-3 py-2 text-center text-sm font-medium text-gray-700 border">Days</th>
-                  {chartParams.flux && <th className="px-3 py-2 text-center text-sm font-medium text-gray-700 border">Flux (gfd)</th>}
-                  {chartParams.tmp && <th className="px-3 py-2 text-center text-sm font-medium text-gray-700 border">TMP (psi)</th>}
-                  {chartParams.tcsf && <th className="px-3 py-2 text-center text-sm font-medium text-gray-700 border">TCSF (gfd/psi)</th>}
-                  {chartParams.differentialPressure && <th className="px-3 py-2 text-center text-sm font-medium text-gray-700 border">ΔP (psi)</th>}
-                  {chartParams.instantaneousRecovery && <th className="px-3 py-2 text-center text-sm font-medium text-gray-700 border">Recovery (%)</th>}
-                  {chartParams.normalizedTMP && <th className="px-3 py-2 text-center text-sm font-medium text-gray-700 border">Norm. TMP</th>}
-                  {chartParams.normalizedFlux && <th className="px-3 py-2 text-center text-sm font-medium text-gray-700 border">Norm. Flux</th>}
-                  {chartParams.normalizedTCSF && <th className="px-3 py-2 text-center text-sm font-medium text-gray-700 border">Norm. TCSF</th>}
-                  {chartParams.feedTurbidity && <th className="px-3 py-2 text-center text-sm font-medium text-gray-700 border">Feed Turb.</th>}
-                  {chartParams.filtrateTurbidity && <th className="px-3 py-2 text-center text-sm font-medium text-gray-700 border">Filt. Turb.</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((result, index) => (
-                  <tr key={index} className="border-b">
-                    <td className="px-3 py-2 border text-sm">{result.date}</td>
-                    <td className="px-3 py-2 border text-sm text-center">{result.days}</td>
-                    {chartParams.flux && <td className="px-3 py-2 border text-sm text-center">{result.flux.toFixed(1)}</td>}
-                    {chartParams.tmp && <td className="px-3 py-2 border text-sm text-center">{result.tmp.toFixed(2)}</td>}
-                    {chartParams.tcsf && <td className="px-3 py-2 border text-sm text-center">{result.tcsf.toFixed(2)}</td>}
-                    {chartParams.differentialPressure && <td className="px-3 py-2 border text-sm text-center">{result.differentialPressure.toFixed(2)}</td>}
-                    {chartParams.instantaneousRecovery && <td className="px-3 py-2 border text-sm text-center">{result.instantaneousRecovery.toFixed(1)}</td>}
-                    {chartParams.normalizedTMP && <td className="px-3 py-2 border text-sm text-center">{result.normalizedTMP.toFixed(2)}</td>}
-                    {chartParams.normalizedFlux && <td className="px-3 py-2 border text-sm text-center">{result.normalizedFlux.toFixed(1)}</td>}
-                    {chartParams.normalizedTCSF && <td className="px-3 py-2 border text-sm text-center">{result.normalizedTCSF.toFixed(2)}</td>}
-                    {chartParams.feedTurbidity && <td className="px-3 py-2 border text-sm text-center">{inputData[index]?.feedTurbidity.toFixed(1) || '-'}</td>}
-                    {chartParams.filtrateTurbidity && <td className="px-3 py-2 border text-sm text-center">{inputData[index]?.filtrateTurbidity.toFixed(2) || '-'}</td>}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        {/* SVG Chart */}
+        <SimpleChart data={results} selectedParams={chartParams} />
       </div>
 
-      {/* Performance Analysis */}
+      {/* Action Recommendations */}
       {performanceAnalysis && (
         <div className="mb-6">
-          <h3 className="text-xl font-bold text-gray-800 mb-4">HYDRAcap® Performance Analysis</h3>
+          <h3 className="text-xl font-bold text-gray-800 mb-4">📋 Action Recommendations</h3>
           <div className="text-sm text-gray-600 mb-4">
-            <strong>Baseline source:</strong> First data point (Reference Conditions)
+            <strong>Analysis baseline:</strong> First measurement (Day 1) • <strong>Current Status:</strong> 
+            <span className={`ml-2 font-semibold ${
+              performanceAnalysis.current_tmp > 20 || performanceAnalysis.current_tcsf < 7 ? 'text-red-600' : 
+              performanceAnalysis.current_tmp > 15 || performanceAnalysis.current_tcsf < 10 ? 'text-yellow-600' : 
+              'text-green-600'
+            }`}>
+              {performanceAnalysis.current_tmp > 20 || performanceAnalysis.current_tcsf < 7 ? 'URGENT ACTION REQUIRED' : 
+               performanceAnalysis.current_tmp > 15 || performanceAnalysis.current_tcsf < 10 ? 'PLAN MAINTENANCE' : 
+               'SYSTEM HEALTHY'}
+            </span>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* TCSF Analysis */}
-            <div className={`p-4 rounded-lg ${performanceAnalysis.tcsf_decline > 30 || performanceAnalysis.current_tcsf < 7 ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'}`}>
-              <h4 className="font-semibold text-gray-800 mb-2">TCSF Performance</h4>
-              <div className={`text-2xl font-bold mb-2 ${performanceAnalysis.tcsf_decline > 30 || performanceAnalysis.current_tcsf < 7 ? 'text-red-600' : 'text-green-600'}`}>
-                {performanceAnalysis.tcsf_decline > 0 ? '-' : '+'}{Math.abs(performanceAnalysis.tcsf_decline).toFixed(1)}%
-              </div>
-              <div className="text-sm text-gray-700 mb-1">
-                Current: {performanceAnalysis.current_tcsf.toFixed(2)} gfd/psi
-              </div>
-              <div className={`text-sm font-medium ${performanceAnalysis.tcsf_decline > 30 || performanceAnalysis.current_tcsf < 7 ? 'text-red-800' : 'text-green-800'}`}>
-                {performanceAnalysis.current_tcsf < 7 ? 'Chemical Cleaning Required' : 
-                 performanceAnalysis.tcsf_decline > 30 ? 'Performance Declining' : 'Within Normal Range'}
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Immediate Actions */}
+            <div className="p-4 bg-red-50 rounded-lg">
+              <h4 className="font-semibold text-red-800 mb-3">🚨 Immediate Actions (0-7 days)</h4>
+              <ul className="space-y-2 text-sm">
+                {performanceAnalysis.current_tmp > 20 && (
+                  <li className="flex items-start">
+                    <span className="text-red-600 mr-2">🛑</span>
+                    <div>
+                      <strong className="text-red-800">CRITICAL:</strong> Stop operation immediately
+                      <div className="text-red-600">TMP = {performanceAnalysis.current_tmp.toFixed(2)} psi (exceeds 20 psi safe limit)</div>
+                    </div>
+                  </li>
+                )}
+                {performanceAnalysis.current_tcsf < 7 && (
+                  <li className="flex items-start">
+                    <span className="text-red-600 mr-2">🔴</span>
+                    <div>
+                      <strong className="text-red-800">URGENT:</strong> Perform chemical cleaning now
+                      <div className="text-red-600">TCSF = {performanceAnalysis.current_tcsf.toFixed(2)} gfd/psi (below 7 minimum)</div>
+                    </div>
+                  </li>
+                )}
+                {performanceAnalysis.current_tmp > 15 && performanceAnalysis.current_tmp <= 20 && (
+                  <li className="flex items-start">
+                    <span className="text-yellow-600 mr-2">⚠️</span>
+                    <div>
+                      <strong className="text-yellow-800">WARNING:</strong> Schedule cleaning within 3 days
+                      <div className="text-yellow-600">TMP trending upward ({performanceAnalysis.current_tmp.toFixed(2)} psi)</div>
+                    </div>
+                  </li>
+                )}
+                {performanceAnalysis.tcsf_decline > 30 && performanceAnalysis.current_tcsf >= 7 && (
+                  <li className="flex items-start">
+                    <span className="text-yellow-600 mr-2">📉</span>
+                    <div>
+                      <strong className="text-yellow-800">DECLINING:</strong> Performance drop detected
+                      <div className="text-yellow-600">TCSF declined {performanceAnalysis.tcsf_decline.toFixed(1)}% from baseline</div>
+                    </div>
+                  </li>
+                )}
+                {performanceAnalysis.current_tmp <= 15 && performanceAnalysis.current_tcsf >= 10 && performanceAnalysis.tcsf_decline <= 15 && (
+                  <li className="flex items-start">
+                    <span className="text-green-600 mr-2">✅</span>
+                    <div>
+                      <strong className="text-green-800">HEALTHY:</strong> Continue normal monitoring
+                      <div className="text-green-600">All parameters within optimal range</div>
+                    </div>
+                  </li>
+                )}
+              </ul>
             </div>
 
-            {/* TMP Analysis */}
-            <div className={`p-4 rounded-lg ${performanceAnalysis.tmp_increase > 50 || performanceAnalysis.current_tmp > 20 ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'}`}>
-              <h4 className="font-semibold text-gray-800 mb-2">TMP Performance</h4>
-              <div className={`text-2xl font-bold mb-2 ${performanceAnalysis.tmp_increase > 50 || performanceAnalysis.current_tmp > 20 ? 'text-red-600' : 'text-green-600'}`}>
-                {performanceAnalysis.tmp_increase > 0 ? '+' : ''}{performanceAnalysis.tmp_increase.toFixed(1)}%
-              </div>
-              <div className="text-sm text-gray-700 mb-1">
-                Current: {performanceAnalysis.current_tmp.toFixed(2)} psi
-              </div>
-              <div className={`text-sm font-medium ${performanceAnalysis.tmp_increase > 50 || performanceAnalysis.current_tmp > 20 ? 'text-red-800' : 'text-green-800'}`}>
-                {performanceAnalysis.current_tmp > 20 ? 'CAUTION: TMP exceeds 20 psi' : 
-                 performanceAnalysis.tmp_increase > 50 ? 'Membrane Fouling' : 'Within Normal Range'}
-              </div>
-            </div>
-
-            {/* Differential Pressure Analysis */}
-            <div className={`p-4 rounded-lg ${Math.abs(performanceAnalysis.dp_increase) > 100 ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'}`}>
-              <h4 className="font-semibold text-gray-800 mb-2">Differential Pressure</h4>
-              <div className={`text-2xl font-bold mb-2 ${Math.abs(performanceAnalysis.dp_increase) > 100 ? 'text-red-600' : 'text-green-600'}`}>
-                {performanceAnalysis.dp_increase > 0 ? '+' : ''}{performanceAnalysis.dp_increase.toFixed(1)}%
-              </div>
-              <div className="text-sm text-gray-700 mb-1">
-                Fiber condition indicator
-              </div>
-              <div className={`text-sm font-medium ${Math.abs(performanceAnalysis.dp_increase) > 100 ? 'text-red-800' : 'text-green-800'}`}>
-                {Math.abs(performanceAnalysis.dp_increase) > 100 ? 'Check for Fiber Plugging' : 'Normal Fiber Condition'}
-              </div>
+            {/* Planning Actions */}
+            <div className="p-4 bg-blue-50 rounded-lg">
+              <h4 className="font-semibold text-blue-800 mb-3">📅 Planning Actions (1-4 weeks)</h4>
+              <ul className="space-y-2 text-sm text-blue-700">
+                <li className="flex items-start">
+                  <span className="text-blue-600 mr-2">📈</span>
+                  <div>
+                    <strong>Trend Analysis:</strong> Review {results.length} days of performance data
+                    <div className="text-blue-600">Monitor TCSF and TMP trends for early warning signs</div>
+                  </div>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-blue-600 mr-2">🔄</span>
+                  <div>
+                    <strong>Optimize Operations:</strong> Adjust backwash frequency
+                    <div className="text-blue-600">Based on current fouling rate and membrane condition</div>
+                  </div>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-blue-600 mr-2">📊</span>
+                  <div>
+                    <strong>Reset Baseline:</strong> Establish new reference after cleaning
+                    <div className="text-blue-600">Update tracking parameters for accurate monitoring</div>
+                  </div>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-blue-600 mr-2">🎯</span>
+                  <div>
+                    <strong>Predictive Alerts:</strong> Set early warning thresholds
+                    <div className="text-blue-600">Alert at 15% TCSF decline or TMP increase</div>
+                  </div>
+                </li>
+              </ul>
             </div>
           </div>
 
-          {/* Performance Guidelines */}
-          <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-            <h4 className="font-semibold text-blue-800 mb-3">HYDRAcap® Performance Guidelines:</h4>
+          {/* Cost Savings Summary */}
+          <div className="mt-6 p-4 bg-green-50 rounded-lg">
+            <h4 className="font-semibold text-green-800 mb-3">💰 Maintenance Value Impact</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div>
-                <h5 className="font-semibold text-blue-700 mb-2">Critical Operating Limits:</h5>
-                <ul className="space-y-1 text-blue-700">
-                  <li>• <strong>TMP:</strong> Never exceed 20 psi (1.4 bar)</li>
-                  <li>• <strong>TCSF:</strong> Never decrease below 7 gfd/psi (172 lmh/bar)</li>
-                  <li>• <strong>Recovery:</strong> Optimize based on feed water quality</li>
-                  <li>• <strong>Temperature:</strong> Reference normalization at 20°C</li>
+                <h5 className="font-semibold text-green-700 mb-2">Cost Avoidance:</h5>
+                <ul className="space-y-1 text-green-600">
+                  <li>• Prevent $10,000+ membrane replacement costs</li>
+                  <li>• Avoid emergency shutdown losses</li>
+                  <li>• Reduce chemical cleaning frequency</li>
                 </ul>
               </div>
               <div>
-                <h5 className="font-semibold text-blue-700 mb-2">Maintenance Actions:</h5>
-                <ul className="space-y-1 text-blue-700">
-                  <li>• <strong>TMP 15-20 psi:</strong> Chemical cleaning recommended</li>
-                  <li>• <strong>TCSF decline greater than 30%:</strong> Evaluate cleaning schedule</li>
-                  <li>• <strong>High ΔP:</strong> Check for fiber plugging or cake layer</li>
-                  <li>• <strong>Unstable operation:</strong> Increase backwash frequency</li>
+                <h5 className="font-semibold text-green-700 mb-2">Performance Benefits:</h5>
+                <ul className="space-y-1 text-green-600">
+                  <li>• Extend membrane life by 25-40%</li>
+                  <li>• Maintain consistent water quality</li>
+                  <li>• Optimize operational efficiency</li>
                 </ul>
               </div>
             </div>
