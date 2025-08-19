@@ -744,7 +744,7 @@ const UFMonitoringSystem = () => {
                 Current: {performanceAnalysis.current_tmp.toFixed(2)} psi
               </div>
               <div className={`text-sm font-medium ${performanceAnalysis.tmp_increase > 50 || performanceAnalysis.current_tmp > 20 ? 'text-red-800' : 'text-green-800'}`}>
-                {performanceAnalysis.current_tmp > 20 ? 'CAUTION: TMP > 20 psi' : 
+                {performanceAnalysis.current_tmp > 20 ? 'CAUTION: TMP exceeds 20 psi' : 
                  performanceAnalysis.tmp_increase > 50 ? 'Membrane Fouling' : 'Within Normal Range'}
               </div>
             </div>
@@ -781,7 +781,7 @@ const UFMonitoringSystem = () => {
                 <h5 className="font-semibold text-blue-700 mb-2">Maintenance Actions:</h5>
                 <ul className="space-y-1 text-blue-700">
                   <li>• <strong>TMP 15-20 psi:</strong> Chemical cleaning recommended</li>
-                  <li>• <strong>TCSF decline >30%:</strong> Evaluate cleaning schedule</li>
+                  <li>• <strong>TCSF decline greater than 30%:</strong> Evaluate cleaning schedule</li>
                   <li>• <strong>High ΔP:</strong> Check for fiber plugging or cake layer</li>
                   <li>• <strong>Unstable operation:</strong> Increase backwash frequency</li>
                 </ul>
