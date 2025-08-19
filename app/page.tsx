@@ -2,11 +2,12 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import logo from '../public/zekindo-logo.png';
-import OperatingData from './components/OperatingData';
+import OperatingData from './components/OperatingData'; // Your existing UF Design component
+import PerformanceNormalization from './components/PerformanceNormalization'; // New UF Monitoring component
 import DataManager from './components/DataManager';
 
 export default function Home() {
-  const [activeSection, setActiveSection] = useState('operating');
+  const [activeSection, setActiveSection] = useState('design');
   const [isClient, setIsClient] = useState(false);
   
   useEffect(() => {
@@ -45,6 +46,20 @@ export default function Home() {
         <Image src={logo} alt="Zekindo Chemicals Logo" width={200} height={80} style={{ height: 'auto' }} />
         <div className="flex items-center space-x-4">
           <nav className="flex space-x-4">
+            <button
+              onClick={() => setActiveSection('design')}
+              className={`px-4 py-2 rounded ${activeSection === 'design' ? 'bg-blue-100 text-blue-900' : 'text-blue-900'}`}
+            >
+              UF System Design
+            </button>
+            <button
+              onClick={() => setActiveSection('monitoring')}
+              className={`px-4 py-2 rounded ${activeSection === 'monitoring' ? 'bg-blue-100 text-blue-900' : 'text-blue-900'}`}
+            >
+              UF Performance Monitoring
+            </button>
+            
+            {/* Commented out RO sections - can be re-enabled later */}
             {/* 
             <button
               onClick={() => setActiveSection('project')}
@@ -64,13 +79,13 @@ export default function Home() {
             >
               RO Membrane Design
             </button>
-            */}
             <button
               onClick={() => setActiveSection('operating')}
               className={`px-4 py-2 rounded ${activeSection === 'operating' ? 'bg-blue-100 text-blue-900' : 'text-blue-900'}`}
             >
               RO Membrane Evaluation
             </button>
+            */}
           </nav>
           <button 
             onClick={handleLogout}
@@ -83,13 +98,19 @@ export default function Home() {
       
       <main className="flex-grow container mx-auto px-4 py-8">
         <DataManager />
-        {activeSection === 'operating' && <OperatingData />}
         
-        {/* Commented out sections - easy to re-enable later */}
+        {/* UF System Design Section */}
+        {activeSection === 'design' && <OperatingData />}
+        
+        {/* UF Performance Monitoring Section */}
+        {activeSection === 'monitoring' && <PerformanceNormalization />}
+        
+        {/* Commented out RO sections - easy to re-enable later */}
         {/* 
         {activeSection === 'project' && <ProjectDetails />}
         {activeSection === 'water' && <FeedWaterAnalysis />}
         {activeSection === 'membrane' && <ROMembraneDesign />}
+        {activeSection === 'operating' && <OperatingData />}
         */}
       </main>
       
