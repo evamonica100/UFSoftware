@@ -259,13 +259,13 @@ const UFMonitoringSystem = () => {
     URL.revokeObjectURL(url);
   };
 
-  // Simple SVG Chart Component
+  // Simple Chart Component with better implementation
   const SimpleChart = ({ data, selectedParams }: { data: ResultData[], selectedParams: ChartParameters }) => {
-    if (data.length === 0) return <div className="text-gray-500">No data to display</div>;
+    if (data.length === 0) return <div className="text-gray-500 text-center py-8">No data to display</div>;
 
-    const chartWidth = 800;
-    const chartHeight = 400;
-    const padding = { top: 20, right: 60, bottom: 40, left: 60 };
+    const chartWidth = 900;
+    const chartHeight = 500;
+    const padding = { top: 40, right: 120, bottom: 60, left: 80 };
     const plotWidth = chartWidth - padding.left - padding.right;
     const plotHeight = chartHeight - padding.top - padding.bottom;
 
@@ -275,11 +275,11 @@ const UFMonitoringSystem = () => {
       .map(([key]) => key as keyof ChartParameters);
 
     if (activeParams.length === 0) {
-      return <div className="text-gray-500">Select parameters to display trends</div>;
+      return <div className="text-gray-500 text-center py-8">Select parameters to display trends</div>;
     }
 
-    // Create data points for each active parameter
-    const chartData = activeParams.map((param, paramIndex) => {
+    // Prepare data for each parameter
+    const chartDataSets = activeParams.map((param, paramIndex) => {
       const values = data.map((d, index) => {
         let value = 0;
         switch (param) {
@@ -294,122 +294,262 @@ const UFMonitoringSystem = () => {
           case 'feedTurbidity': value = inputData[index]?.feedTurbidity || 0; break;
           case 'filtrateTurbidity': value = inputData[index]?.filtrateTurbidity || 0; break;
         }
-        return { x: index, y: value, day: d.days };
+        return { x: index, y: value, day: d.days, date: d.date };
       });
 
-      const minY = Math.min(...values.map(v => v.y));
-      const maxY = Math.max(...values.map(v => v.y));
+      // Find min/max for this parameter
+      const yValues = values.map(v => v.y);
+      const minY = Math.min(...yValues);
+      const maxY = Math.max(...yValues);
       const yRange = maxY - minY || 1;
+      const yPadding = yRange * 0.1; // 10% padding
 
-      const points = values.map(point => ({
-        x: padding.left + (point.x / (data.length - 1 || 1)) * plotWidth,
-        y: padding.top + plotHeight - ((point.y - minY) / yRange) * plotHeight,
+      // Map values to screen coordinates
+      const points = values.map((point, idx) => ({
+        x: padding.left + (idx / Math.max(data.length - 1, 1)) * plotWidth,
+        y: padding.top + plotHeight - ((point.y - minY + yPadding) / (yRange + 2 * yPadding)) * plotHeight,
+        originalValue: point.y,
         day: point.day,
-        value: point.y
+        date: point.date
       }));
 
-      const colors = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6', '#6366F1', '#F97316', '#84CC16'];
+      const colors = [
+        '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', 
+        '#EC4899', '#14B8A6', '#6366F1', '#F97316', '#84CC16'
+      ];
       
+      // Get parameter label
+      const getParamLabel = (param: string) => {
+        switch (param) {
+          case 'flux': return 'Flux (gfd)';
+          case 'tmp': return 'TMP (psi)';
+          case 'tcsf': return 'TCSF (gfd/psi)';
+          case 'differentialPressure': return 'Differential Pressure (psi)';
+          case 'instantaneousRecovery': return 'Recovery (%)';
+          case 'normalizedTMP': return 'Normalized TMP (psi)';
+          case 'normalizedFlux': return 'Normalized Flux (gfd)';
+          case 'normalizedTCSF': return 'Normalized TCSF (gfd/psi)';
+          case 'feedTurbidity': return 'Feed Turbidity (NTU)';
+          case 'filtrateTurbidity': return 'Filtrate Turbidity (NTU)';
+          default: return param;
+        }
+      };
+
       return {
         param,
+        label: getParamLabel(param),
         points,
         color: colors[paramIndex % colors.length],
-        minY,
-        maxY
+        minY: minY - yPadding,
+        maxY: maxY + yPadding,
+        yRange: yRange + 2 * yPadding
       };
     });
 
+    // Create path strings for each line
+    const createPath = (points: any[]) => {
+      if (points.length === 0) return '';
+      let path = `M ${points[0].x} ${points[0].y}`;
+      for (let i = 1; i < points.length; i++) {
+        path += ` L ${points[i].x} ${points[i].y}`;
+      }
+      return path;
+    };
+
     return (
       <div className="bg-white p-4 border rounded-lg">
-        <h4 className="font-semibold text-gray-700 mb-3">Performance Trends Over Time</h4>
-        <svg width={chartWidth} height={chartHeight} className="border">
-          {/* Grid lines */}
-          {[0, 0.25, 0.5, 0.75, 1].map(ratio => (
-            <g key={ratio}>
+        <h4 className="font-semibold text-gray-700 mb-4">Performance Trends Over Time</h4>
+        <div className="overflow-x-auto">
+          <svg width={chartWidth} height={chartHeight} className="border">
+            {/* Background */}
+            <rect width={chartWidth} height={chartHeight} fill="white" />
+            
+            {/* Grid lines */}
+            <defs>
+              <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#f3f4f6" strokeWidth="1"/>
+              </pattern>
+            </defs>
+            <rect x={padding.left} y={padding.top} width={plotWidth} height={plotHeight} fill="url(#grid)" />
+
+            {/* Vertical grid lines */}
+            {data.map((_, index) => {
+              if (index % Math.ceil(data.length / 6) === 0) {
+                const x = padding.left + (index / Math.max(data.length - 1, 1)) * plotWidth;
+                return (
+                  <line
+                    key={`vgrid-${index}`}
+                    x1={x}
+                    y1={padding.top}
+                    x2={x}
+                    y2={padding.top + plotHeight}
+                    stroke="#e5e7eb"
+                    strokeWidth="1"
+                  />
+                );
+              }
+              return null;
+            })}
+
+            {/* Horizontal grid lines */}
+            {[0, 0.2, 0.4, 0.6, 0.8, 1].map(ratio => (
               <line
+                key={`hgrid-${ratio}`}
                 x1={padding.left}
                 y1={padding.top + ratio * plotHeight}
                 x2={padding.left + plotWidth}
                 y2={padding.top + ratio * plotHeight}
-                stroke="#E5E7EB"
+                stroke="#e5e7eb"
                 strokeWidth="1"
               />
-              <line
-                x1={padding.left + ratio * plotWidth}
-                y1={padding.top}
-                x2={padding.left + ratio * plotWidth}
-                y2={padding.top + plotHeight}
-                stroke="#E5E7EB"
-                strokeWidth="1"
-              />
-            </g>
-          ))}
+            ))}
 
-          {/* Data lines */}
-          {chartData.map((series, seriesIndex) => (
-            <g key={series.param}>
-              <polyline
-                fill="none"
-                stroke={series.color}
-                strokeWidth="2"
-                points={series.points.map(p => `${p.x},${p.y}`).join(' ')}
-              />
-              {/* Data points */}
-              {series.points.map((point, pointIndex) => (
-                <circle
-                  key={pointIndex}
-                  cx={point.x}
-                  cy={point.y}
-                  r="4"
-                  fill={series.color}
-                >
-                  <title>{`Day ${point.day}: ${point.value.toFixed(2)}`}</title>
-                </circle>
-              ))}
-            </g>
-          ))}
+            {/* Data lines */}
+            {chartDataSets.map((dataset, datasetIndex) => (
+              <g key={dataset.param}>
+                {/* Line */}
+                <path
+                  d={createPath(dataset.points)}
+                  fill="none"
+                  stroke={dataset.color}
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                
+                {/* Data points */}
+                {dataset.points.map((point, pointIndex) => (
+                  <circle
+                    key={`${dataset.param}-${pointIndex}`}
+                    cx={point.x}
+                    cy={point.y}
+                    r="5"
+                    fill={dataset.color}
+                    stroke="white"
+                    strokeWidth="2"
+                    className="hover:r-7 cursor-pointer"
+                  >
+                    <title>{`${dataset.label}: ${point.originalValue.toFixed(2)}\nDay ${point.day}\n${point.date}`}</title>
+                  </circle>
+                ))}
+              </g>
+            ))}
 
-          {/* Axes */}
-          <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + plotHeight} stroke="#374151" strokeWidth="2"/>
-          <line x1={padding.left} y1={padding.top + plotHeight} x2={padding.left + plotWidth} y2={padding.top + plotHeight} stroke="#374151" strokeWidth="2"/>
+            {/* Axes */}
+            <line 
+              x1={padding.left} 
+              y1={padding.top} 
+              x2={padding.left} 
+              y2={padding.top + plotHeight} 
+              stroke="#374151" 
+              strokeWidth="2"
+            />
+            <line 
+              x1={padding.left} 
+              y1={padding.top + plotHeight} 
+              x2={padding.left + plotWidth} 
+              y2={padding.top + plotHeight} 
+              stroke="#374151" 
+              strokeWidth="2"
+            />
 
-          {/* X-axis labels */}
-          {data.map((d, index) => (
-            index % Math.ceil(data.length / 8) === 0 && (
-              <text
-                key={index}
-                x={padding.left + (index / (data.length - 1 || 1)) * plotWidth}
-                y={padding.top + plotHeight + 20}
-                textAnchor="middle"
-                fontSize="12"
-                fill="#6B7280"
-              >
-                Day {d.days}
-              </text>
-            )
-          ))}
+            {/* X-axis labels */}
+            {data.map((d, index) => {
+              if (index % Math.ceil(data.length / 6) === 0) {
+                const x = padding.left + (index / Math.max(data.length - 1, 1)) * plotWidth;
+                return (
+                  <g key={`xlabel-${index}`}>
+                    <text
+                      x={x}
+                      y={padding.top + plotHeight + 20}
+                      textAnchor="middle"
+                      fontSize="12"
+                      fill="#6B7280"
+                    >
+                      Day {d.days}
+                    </text>
+                    <text
+                      x={x}
+                      y={padding.top + plotHeight + 35}
+                      textAnchor="middle"
+                      fontSize="10"
+                      fill="#9CA3AF"
+                    >
+                      {new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </text>
+                  </g>
+                );
+              }
+              return null;
+            })}
 
-          {/* Legend */}
-          {chartData.map((series, index) => (
-            <g key={series.param}>
-              <rect
-                x={padding.left + plotWidth + 10}
-                y={padding.top + index * 20}
-                width="12"
-                height="12"
-                fill={series.color}
-              />
-              <text
-                x={padding.left + plotWidth + 25}
-                y={padding.top + index * 20 + 9}
-                fontSize="12"
-                fill="#374151"
-              >
-                {series.param}
-              </text>
-            </g>
-          ))}
-        </svg>
+            {/* Y-axis title */}
+            <text
+              x={20}
+              y={padding.top + plotHeight / 2}
+              textAnchor="middle"
+              fontSize="14"
+              fill="#374151"
+              transform={`rotate(-90, 20, ${padding.top + plotHeight / 2})`}
+            >
+              Parameter Values
+            </text>
+
+            {/* X-axis title */}
+            <text
+              x={padding.left + plotWidth / 2}
+              y={chartHeight - 10}
+              textAnchor="middle"
+              fontSize="14"
+              fill="#374151"
+            >
+              Operating Days
+            </text>
+
+            {/* Legend */}
+            {chartDataSets.map((dataset, index) => {
+              const legendY = padding.top + 20 + index * 25;
+              return (
+                <g key={`legend-${dataset.param}`}>
+                  <rect
+                    x={padding.left + plotWidth + 20}
+                    y={legendY - 8}
+                    width="16"
+                    height="16"
+                    fill={dataset.color}
+                    rx="2"
+                  />
+                  <text
+                    x={padding.left + plotWidth + 45}
+                    y={legendY + 4}
+                    fontSize="12"
+                    fill="#374151"
+                  >
+                    {dataset.label}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+        
+        {/* Chart Summary */}
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div className="bg-blue-50 p-3 rounded">
+            <h5 className="font-semibold text-blue-800">Data Points</h5>
+            <p className="text-blue-700">{data.length} measurements over {data.length > 0 ? data[data.length - 1].days : 0} days</p>
+          </div>
+          <div className="bg-green-50 p-3 rounded">
+            <h5 className="font-semibold text-green-800">Parameters Tracked</h5>
+            <p className="text-green-700">{activeParams.length} parameters selected</p>
+          </div>
+          <div className="bg-yellow-50 p-3 rounded">
+            <h5 className="font-semibold text-yellow-800">Monitoring Status</h5>
+            <p className="text-yellow-700">
+              {data.length >= 7 ? 'Sufficient data for trend analysis' : 'Collect more data for better trends'}
+            </p>
+          </div>
+        </div>
       </div>
     );
   };
@@ -918,28 +1058,6 @@ const UFMonitoringSystem = () => {
             </div>
           </div>
 
-          {/* Cost Savings Summary */}
-          <div className="mt-6 p-4 bg-green-50 rounded-lg">
-            <h4 className="font-semibold text-green-800 mb-3">💰 Maintenance Value Impact</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div>
-                <h5 className="font-semibold text-green-700 mb-2">Cost Avoidance:</h5>
-                <ul className="space-y-1 text-green-600">
-                  <li>• Prevent $10,000+ membrane replacement costs</li>
-                  <li>• Avoid emergency shutdown losses</li>
-                  <li>• Reduce chemical cleaning frequency</li>
-                </ul>
-              </div>
-              <div>
-                <h5 className="font-semibold text-green-700 mb-2">Performance Benefits:</h5>
-                <ul className="space-y-1 text-green-600">
-                  <li>• Extend membrane life by 25-40%</li>
-                  <li>• Maintain consistent water quality</li>
-                  <li>• Optimize operational efficiency</li>
-                </ul>
-              </div>
-            </div>
-          </div>
         </div>
       )}
     </div>
