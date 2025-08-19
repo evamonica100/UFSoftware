@@ -1059,4 +1059,4 @@ const UFDesignSoftware = () => {
   );
 };
 
-export default OperatingData;
+export default UFDesignSoftware;
