@@ -1012,10 +1012,7 @@ const UFDesignSoftware = () => {
   );
 };
 
-export default UFDesignSoftware;-1">Net Product Demand (m³/h)</label>
-                <input
-                  type="number"
-                  value={feedWater.Q_demand_net}
+export default UFDesignSoftware;
                   onChange={(e) => setFeedWater(prev => ({ ...prev, Q_demand_net: Number(e.target.value) }))}
                   className="w-full p-2 border rounded"
                 />
