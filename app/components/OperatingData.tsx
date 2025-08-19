@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import * as XLSX from 'xlsx';
 
 interface FeedWaterAnalysis {
   Q_demand_net: number;
@@ -385,9 +384,6 @@ const UFDesignSoftware = () => {
   const handleCalculate = () => {
     const calculatedResults = calculateUFDesign();
     setResults(calculatedResults);
-    localStorage.setItem("ufDesignResults", JSON.stringify(calculatedResults));
-    localStorage.setItem("feedWater", JSON.stringify(feedWater));
-    localStorage.setItem("designCriteria", JSON.stringify(designCriteria));
   };
 
   const exportToExcel = () => {
@@ -395,99 +391,36 @@ const UFDesignSoftware = () => {
       alert("Please calculate results first");
       return;
     }
-
-    const wb = XLSX.utils.book_new();
-
-    // System Overview
-    const systemOverview = [
-      ["UF System Design Summary", "", ""],
+    
+    // Create a simple CSV export since we can't use XLSX in Claude artifacts
+    const csvData = [
+      ["UF System Design Summary"],
       ["Design Capacity", feedWater.Q_demand_net, "m³/h"],
-      ["Module Type", designCriteria.module_type, ""],
-      ["Number of Trains", designCriteria.n_trains_online, ""],
-      ["Modules per Train", results.n_mod_per_train, ""],
-      ["Total Modules", results.total_modules, ""],
+      ["Module Type", designCriteria.module_type],
+      ["Number of Trains", designCriteria.n_trains_online],
+      ["Modules per Train", results.n_mod_per_train],
+      ["Total Modules", results.total_modules],
       ["Operating Flux", results.instantaneous_flux.toFixed(1), "LMH"],
       ["System Recovery", results.calculated_recovery.toFixed(1), "%"],
       ["System Availability", (results.f_avail * 100).toFixed(1), "%"],
-      ["", "", ""],
-      ["Feed Water Quality", "", ""],
-      ["Temperature", feedWater.temperature, "°C"],
-      ["pH", feedWater.pH, ""],
-      ["Turbidity", feedWater.turbidity, "NTU"],
-      ["TSS", feedWater.tss, "mg/L"],
-      ["TDS", feedWater.tds, "mg/L"],
-      ["SDI15", feedWater.sdi15, ""],
-      ["TOC", feedWater.toc, "mg/L"],
-    ];
-
-    // Equipment Sizing
-    const equipmentSizing = [
-      ["Equipment Sizing", "Capacity", "Unit"],
+      [""],
+      ["Equipment Sizing"],
       ["Feed Pump Flow", results.feed_pump_flow.toFixed(1), "m³/h"],
-      ["Feed Pump Head", results.feed_pump_head.toFixed(1), "m"],
       ["Backwash Pump Flow", results.backwash_pump_flow.toFixed(1), "m³/h"],
-      ["CIP Pump Flow", results.cip_pump_flow.toFixed(1), "m³/h"],
       ["Air Blower", results.air_blower_flow.toFixed(0), "Nm³/h"],
-      ["BW/Filtrate Tank", results.V_BW_tank.toFixed(1), "m³"],
-      ["CIP Tank", results.V_CIP_tank.toFixed(1), "m³"],
-      ["Tank Sufficient?", results.tank_sufficient ? "YES" : "NO", ""],
-      ["", "", ""],
-      ["Operating Cycles", "", ""],
-      ["Filtration Duration", backwashSettings.interval_min, "min"],
-      ["Backwash Duration", ((backwashSettings.t_AS_s + backwashSettings.t_GD_s + backwashSettings.t_BWTop_s + backwashSettings.t_BWBot_s + backwashSettings.t_FF_s) / 60).toFixed(1), "min"],
-      ["CEB Frequency", cebSettings.frequency_h, "hours"],
-      ["CIP Frequency", cipSettings.frequency_days, "days"],
+      ["BW Tank", results.V_BW_tank.toFixed(1), "m³"],
+      ["CIP Tank", results.V_CIP_tank.toFixed(1), "m³"]
     ];
 
-    // Performance Predictions
-    const performance = [
-      ["Performance Predictions", "Feed", "Product", "Removal"],
-      ["Turbidity (NTU)", feedWater.turbidity, results.expected_turbidity.toFixed(2), results.turbidity_removal_percent.toFixed(1) + "%"],
-      ["SDI15", feedWater.sdi15, results.expected_sdi.toFixed(1), "Improved"],
-      ["TOC (mg/L)", feedWater.toc, results.expected_toc.toFixed(1), results.toc_removal_percent.toFixed(1) + "%"],
-      ["TSS (mg/L)", feedWater.tss, "<0.1", ">99%"],
-      ["", "", "", ""],
-      ["Utility Consumption", "Value", "Unit", ""],
-      ["Backwash Water", results.bw_water_consumption.toFixed(1), "m³/h", ""],
-      ["CEB Chemical", results.ceb_chemical_consumption.toFixed(2), "kg/event", ""],
-      ["Air for Scour", results.air_blower_flow.toFixed(0), "Nm³/h", ""],
-    ];
-
-    const systemWs = XLSX.utils.aoa_to_sheet(systemOverview);
-    const equipmentWs = XLSX.utils.aoa_to_sheet(equipmentSizing);
-    const performanceWs = XLSX.utils.aoa_to_sheet(performance);
-
-    XLSX.utils.book_append_sheet(wb, systemWs, "System Overview");
-    XLSX.utils.book_append_sheet(wb, equipmentWs, "Equipment Sizing");
-    XLSX.utils.book_append_sheet(wb, performanceWs, "Performance");
-
-    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-
-    const url = URL.createObjectURL(data);
-    const link = document.createElement('a');
+    const csvContent = csvData.map(row => row.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
     link.href = url;
-    link.download = 'UF_System_Design.xlsx';
+    link.download = "UF_System_Design.csv";
     link.click();
     URL.revokeObjectURL(url);
   };
-
-  // Load saved data on component mount
-  useEffect(() => {
-    const savedFeedWater = localStorage.getItem("feedWater");
-    const savedDesignCriteria = localStorage.getItem("designCriteria");
-    const savedResults = localStorage.getItem("ufDesignResults");
-
-    if (savedFeedWater) {
-      setFeedWater(JSON.parse(savedFeedWater));
-    }
-    if (savedDesignCriteria) {
-      setDesignCriteria(JSON.parse(savedDesignCriteria));
-    }
-    if (savedResults) {
-      setResults(JSON.parse(savedResults));
-    }
-  }, []);
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-lg max-w-7xl mx-auto">
@@ -502,6 +435,156 @@ const UFDesignSoftware = () => {
           <div className="bg-blue-50 p-4 rounded-lg">
             <h3 className="text-lg font-semibold text-blue-700 mb-4">Feed Water & Project Information</h3>
             <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Net Demand (m³/h)</label>
+                <input
+                  type="number"
+                  value={feedWater.Q_demand_net}
+                  onChange={(e) => setFeedWater(prev => ({ ...prev, Q_demand_net: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Temperature (°C)</label>
+                <input
+                  type="number"
+                  value={feedWater.temperature}
+                  onChange={(e) => setFeedWater(prev => ({ ...prev, temperature: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">pH</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={feedWater.pH}
+                  onChange={(e) => setFeedWater(prev => ({ ...prev, pH: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">TDS (mg/L)</label>
+                <input
+                  type="number"
+                  value={feedWater.tds}
+                  onChange={(e) => setFeedWater(prev => ({ ...prev, tds: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">TSS (mg/L)</label>
+                <input
+                  type="number"
+                  value={feedWater.tss}
+                  onChange={(e) => setFeedWater(prev => ({ ...prev, tss: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Turbidity (NTU)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={feedWater.turbidity}
+                  onChange={(e) => setFeedWater(prev => ({ ...prev, turbidity: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">SDI15</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={feedWater.sdi15}
+                  onChange={(e) => setFeedWater(prev => ({ ...prev, sdi15: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">TOC (mg/L)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={feedWater.toc}
+                  onChange={(e) => setFeedWater(prev => ({ ...prev, toc: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Design Criteria */}
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h3 className="text-lg font-semibold text-blue-700 mb-4">Design Criteria</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Target Flux @ 25°C (LMH)</label>
+                <input
+                  type="number"
+                  value={designCriteria.flux25_target}
+                  onChange={(e) => setDesignCriteria(prev => ({ ...prev, flux25_target: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+                <span className="text-xs text-gray-500">Range: 40-110 LMH</span>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Module Type</label>
+                <select
+                  value={designCriteria.module_type}
+                  onChange={(e) => setDesignCriteria(prev => ({ ...prev, module_type: e.target.value }))}
+                  className="w-full p-2 border rounded"
+                >
+                  {Object.keys(moduleDatabase).map(type => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Online Trains</label>
+                <input
+                  type="number"
+                  value={designCriteria.n_trains_online}
+                  onChange={(e) => setDesignCriteria(prev => ({ ...prev, n_trains_online: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Redundant Trains</label>
+                <input
+                  type="number"
+                  value={designCriteria.n_trains_redundant}
+                  onChange={(e) => setDesignCriteria(prev => ({ ...prev, n_trains_redundant: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Safety Factor</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={designCriteria.safety_factor_area}
+                  onChange={(e) => setDesignCriteria(prev => ({ ...prev, safety_factor_area: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+                <span className="text-xs text-gray-500">Typical: 1.1-1.3</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Backwash Settings */}
+          <div className="bg-yellow-50 p-4 rounded-lg">
+            <h3 className="text-lg font-semibold text-blue-700 mb-4">Backwash Program</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Interval (min)</label>
+                <input
+                  type="number"
+                  value={backwashSettings.interval_min}
+                  onChange={(e) => setBackwashSettings(prev => ({ ...prev, interval_min: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">BW Flux (LMH)</label>
                 <input
@@ -700,19 +783,9 @@ const UFDesignSoftware = () => {
                         <td className="px-3 py-2 text-center">m³/h</td>
                       </tr>
                       <tr className="border-t">
-                        <td className="px-3 py-2">TMP</td>
-                        <td className="px-3 py-2 text-center">0.44 @ 24.0°C</td>
-                        <td className="px-3 py-2 text-center">bar</td>
-                      </tr>
-                      <tr className="border-t">
-                        <td className="px-3 py-2">Utility Water - Forward Flush</td>
-                        <td className="px-3 py-2 text-center">Pretreated water</td>
-                        <td className="px-3 py-2 text-center">-</td>
-                      </tr>
-                      <tr className="border-t">
-                        <td className="px-3 py-2">Utility Water - Backwash</td>
-                        <td className="px-3 py-2 text-center">UF filtrate water</td>
-                        <td className="px-3 py-2 text-center">-</td>
+                        <td className="px-3 py-2">System Availability</td>
+                        <td className="px-3 py-2 text-center">{(results.f_avail * 100).toFixed(1)}</td>
+                        <td className="px-3 py-2 text-center">%</td>
                       </tr>
                     </tbody>
                   </table>
@@ -746,28 +819,10 @@ const UFDesignSoftware = () => {
                         <td className="px-3 py-2 text-center">{results.instantaneous_flux.toFixed(0)} LMH</td>
                       </tr>
                       <tr className="border-t">
-                        <td className="px-3 py-2 pl-6">1 Online Units</td>
-                        <td className="px-3 py-2 text-center">-</td>
-                        <td className="px-3 py-2 text-center">-</td>
-                        <td className="px-3 py-2 text-center">{results.instantaneous_flux.toFixed(0)} LMH</td>
-                      </tr>
-                      <tr className="border-t">
-                        <td className="px-3 py-2 pl-6">1 Total Units</td>
-                        <td className="px-3 py-2 text-center">-</td>
-                        <td className="px-3 py-2 text-center">-</td>
-                        <td className="px-3 py-2 text-center">{results.instantaneous_flux.toFixed(0)} LMH</td>
-                      </tr>
-                      <tr className="border-t">
                         <td className="px-3 py-2 pl-6">Average</td>
                         <td className="px-3 py-2 text-center">-</td>
                         <td className="px-3 py-2 text-center">-</td>
                         <td className="px-3 py-2 text-center">{results.average_flux.toFixed(0)} LMH</td>
-                      </tr>
-                      <tr className="border-t">
-                        <td className="px-3 py-2 pl-6">Net</td>
-                        <td className="px-3 py-2 text-center">-</td>
-                        <td className="px-3 py-2 text-center">-</td>
-                        <td className="px-3 py-2 text-center">{results.net_flux.toFixed(0)} LMH</td>
                       </tr>
                       <tr className="border-t">
                         <td className="px-3 py-2 font-medium">Backwash</td>
@@ -776,26 +831,18 @@ const UFDesignSoftware = () => {
                         <td className="px-3 py-2 text-center">{backwashSettings.J_BW} LMH</td>
                       </tr>
                       {cebSettings.enabled && (
-                        <>
-                          <tr className="border-t">
-                            <td className="px-3 py-2 font-medium">Acid CEB</td>
-                            <td className="px-3 py-2 text-center">{(((backwashSettings.t_AS_s + backwashSettings.t_GD_s + backwashSettings.t_BWTop_s + backwashSettings.t_BWBot_s + backwashSettings.t_FF_s)/60) + cebSettings.soak_min).toFixed(1)} min</td>
-                            <td className="px-3 py-2 text-center">{cebSettings.frequency_h} h</td>
-                            <td className="px-3 py-2 text-center">{backwashSettings.J_BW} LMH</td>
-                          </tr>
-                          <tr className="border-t">
-                            <td className="px-3 py-2 font-medium">Alkali CEB</td>
-                            <td className="px-3 py-2 text-center">{(((backwashSettings.t_AS_s + backwashSettings.t_GD_s + backwashSettings.t_BWTop_s + backwashSettings.t_BWBot_s + backwashSettings.t_FF_s)/60) + cebSettings.soak_min).toFixed(1)} min</td>
-                            <td className="px-3 py-2 text-center">{(cebSettings.frequency_h / 2).toFixed(0)} h</td>
-                            <td className="px-3 py-2 text-center">{backwashSettings.J_BW} LMH</td>
-                          </tr>
-                        </>
+                        <tr className="border-t">
+                          <td className="px-3 py-2 font-medium">CEB</td>
+                          <td className="px-3 py-2 text-center">{(((backwashSettings.t_AS_s + backwashSettings.t_GD_s + backwashSettings.t_BWTop_s + backwashSettings.t_BWBot_s + backwashSettings.t_FF_s)/60) + cebSettings.soak_min).toFixed(1)} min</td>
+                          <td className="px-3 py-2 text-center">{cebSettings.frequency_h} h</td>
+                          <td className="px-3 py-2 text-center">{backwashSettings.J_BW} LMH</td>
+                        </tr>
                       )}
                       <tr className="border-t">
                         <td className="px-3 py-2 font-medium">CIP</td>
-                        <td className="px-3 py-2 text-center">311.3 min</td>
+                        <td className="px-3 py-2 text-center">5.0 h</td>
                         <td className="px-3 py-2 text-center">{cipSettings.frequency_days} d</td>
-                        <td className="px-3 py-2 text-center">1.50 m³/h</td>
+                        <td className="px-3 py-2 text-center">{results.cip_pump_flow.toFixed(1)} m³/h</td>
                       </tr>
                     </tbody>
                   </table>
@@ -809,17 +856,10 @@ const UFDesignSoftware = () => {
                   <table className="min-w-full bg-white rounded border text-sm">
                     <thead>
                       <tr className="bg-gray-100">
-                        <th className="px-3 py-2 text-left">Stream Name</th>
-                        <th className="px-3 py-2 text-center" colSpan={2}>Stream 1</th>
-                      </tr>
-                      <tr className="bg-gray-100">
-                        <th className="px-3 py-2 text-left">Water Type</th>
-                        <th className="px-3 py-2 text-center" colSpan={2}>Well Water ({feedWater.temperature}.0 - 30.0 °C)</th>
-                      </tr>
-                      <tr className="bg-gray-100">
-                        <th className="px-3 py-2 text-left"></th>
+                        <th className="px-3 py-2 text-left">Parameter</th>
                         <th className="px-3 py-2 text-center">Feed</th>
-                        <th className="px-3 py-2 text-center">Expected UF Product Water Quality</th>
+                        <th className="px-3 py-2 text-center">UF Product</th>
+                        <th className="px-3 py-2 text-center">Removal</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -827,36 +867,43 @@ const UFDesignSoftware = () => {
                         <td className="px-3 py-2 font-medium">Temperature (°C)</td>
                         <td className="px-3 py-2 text-center">{feedWater.temperature.toFixed(1)}</td>
                         <td className="px-3 py-2 text-center">{feedWater.temperature.toFixed(1)}</td>
+                        <td className="px-3 py-2 text-center">-</td>
                       </tr>
                       <tr className="border-t">
                         <td className="px-3 py-2 font-medium">Turbidity (NTU)</td>
                         <td className="px-3 py-2 text-center">{feedWater.turbidity}</td>
-                        <td className="px-3 py-2 text-center">&le; {results.expected_turbidity.toFixed(1)}</td>
+                        <td className="px-3 py-2 text-center">≤ {results.expected_turbidity.toFixed(1)}</td>
+                        <td className="px-3 py-2 text-center">{results.turbidity_removal_percent.toFixed(1)}%</td>
                       </tr>
                       <tr className="border-t">
                         <td className="px-3 py-2 font-medium">TSS (mg/L)</td>
                         <td className="px-3 py-2 text-center">{feedWater.tss.toFixed(1)}</td>
-                        <td className="px-3 py-2 text-center">-</td>
+                        <td className="px-3 py-2 text-center">&lt;0.1</td>
+                        <td className="px-3 py-2 text-center">&gt;99%</td>
                       </tr>
                       <tr className="border-t">
-                        <td className="px-3 py-2 font-medium">Organics (TOC) (mg/L TOC)</td>
+                        <td className="px-3 py-2 font-medium">TOC (mg/L)</td>
                         <td className="px-3 py-2 text-center">{feedWater.toc}</td>
                         <td className="px-3 py-2 text-center">{results.expected_toc.toFixed(1)}</td>
+                        <td className="px-3 py-2 text-center">{results.toc_removal_percent.toFixed(1)}%</td>
                       </tr>
                       <tr className="border-t">
                         <td className="px-3 py-2 font-medium">SDI15</td>
                         <td className="px-3 py-2 text-center">{feedWater.sdi15.toFixed(1)}</td>
-                        <td className="px-3 py-2 text-center">&le; {results.expected_sdi.toFixed(1)}</td>
+                        <td className="px-3 py-2 text-center">≤ {results.expected_sdi.toFixed(1)}</td>
+                        <td className="px-3 py-2 text-center">Improved</td>
                       </tr>
                       <tr className="border-t">
                         <td className="px-3 py-2 font-medium">TDS (mg/L)</td>
                         <td className="px-3 py-2 text-center">{feedWater.tds}</td>
                         <td className="px-3 py-2 text-center">{feedWater.tds}</td>
+                        <td className="px-3 py-2 text-center">-</td>
                       </tr>
                       <tr className="border-t">
                         <td className="px-3 py-2 font-medium">pH</td>
                         <td className="px-3 py-2 text-center">{feedWater.pH.toFixed(1)}</td>
                         <td className="px-3 py-2 text-center">{feedWater.pH.toFixed(1)}</td>
+                        <td className="px-3 py-2 text-center">-</td>
                       </tr>
                     </tbody>
                   </table>
@@ -1012,147 +1059,4 @@ const UFDesignSoftware = () => {
   );
 };
 
-export default UFDesignSoftware;
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Temperature (°C)</label>
-                <input
-                  type="number"
-                  value={feedWater.temperature}
-                  onChange={(e) => setFeedWater(prev => ({ ...prev, temperature: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">pH</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={feedWater.pH}
-                  onChange={(e) => setFeedWater(prev => ({ ...prev, pH: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">TDS (mg/L)</label>
-                <input
-                  type="number"
-                  value={feedWater.tds}
-                  onChange={(e) => setFeedWater(prev => ({ ...prev, tds: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">TSS (mg/L)</label>
-                <input
-                  type="number"
-                  value={feedWater.tss}
-                  onChange={(e) => setFeedWater(prev => ({ ...prev, tss: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Turbidity (NTU)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={feedWater.turbidity}
-                  onChange={(e) => setFeedWater(prev => ({ ...prev, turbidity: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">SDI15</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={feedWater.sdi15}
-                  onChange={(e) => setFeedWater(prev => ({ ...prev, sdi15: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">TOC (mg/L)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={feedWater.toc}
-                  onChange={(e) => setFeedWater(prev => ({ ...prev, toc: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Design Criteria */}
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h3 className="text-lg font-semibold text-blue-700 mb-4">Design Criteria</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Target Flux @ 25°C (LMH)</label>
-                <input
-                  type="number"
-                  value={designCriteria.flux25_target}
-                  onChange={(e) => setDesignCriteria(prev => ({ ...prev, flux25_target: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-                <span className="text-xs text-gray-500">Range: 40-110 LMH</span>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Module Type</label>
-                <select
-                  value={designCriteria.module_type}
-                  onChange={(e) => setDesignCriteria(prev => ({ ...prev, module_type: e.target.value }))}
-                  className="w-full p-2 border rounded"
-                >
-                  {Object.keys(moduleDatabase).map(type => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Online Trains</label>
-                <input
-                  type="number"
-                  value={designCriteria.n_trains_online}
-                  onChange={(e) => setDesignCriteria(prev => ({ ...prev, n_trains_online: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Redundant Trains</label>
-                <input
-                  type="number"
-                  value={designCriteria.n_trains_redundant}
-                  onChange={(e) => setDesignCriteria(prev => ({ ...prev, n_trains_redundant: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Safety Factor</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={designCriteria.safety_factor_area}
-                  onChange={(e) => setDesignCriteria(prev => ({ ...prev, safety_factor_area: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-                <span className="text-xs text-gray-500">Typical: 1.1-1.3</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Backwash Settings */}
-          <div className="bg-yellow-50 p-4 rounded-lg">
-            <h3 className="text-lg font-semibold text-blue-700 mb-4">Backwash Program</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Interval (min)</label>
-                <input
-                  type="number"
-                  value={backwashSettings.interval_min}
-                  onChange={(e) => setBackwashSettings(prev => ({ ...prev, interval_min: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb
+export default OperatingData;
