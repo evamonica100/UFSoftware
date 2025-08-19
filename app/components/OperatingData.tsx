@@ -1013,10 +1013,6 @@ const UFDesignSoftware = () => {
 };
 
 export default UFDesignSoftware;
-                  onChange={(e) => setFeedWater(prev => ({ ...prev, Q_demand_net: Number(e.target.value) }))}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Temperature (°C)</label>
                 <input
