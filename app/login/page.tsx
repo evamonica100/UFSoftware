@@ -76,7 +76,7 @@ export default function LoginPage() {
   };
 
   const handleHelpClick = () => {
-    alert("Welcome to Zekindo RO Membrane Calculator!\n\n" +
+    alert("Welcome to Zekindo UF Membrane Calculator!\n\n" +
           "To get started:\n" +
           "1. Enter your registered email/username\n" +
           "2. Enter your company name\n" +
